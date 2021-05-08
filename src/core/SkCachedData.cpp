@@ -9,6 +9,25 @@
 #include "src/core/SkCachedData.h"
 #include "src/core/SkDiscardableMemory.h"
 
+#include <dlfcn.h>
+
+static void (*gRecordReplayAssertFn)(const char*, va_list);
+
+static void RecordReplayAssert(const char* aFormat, ...) {
+  if (!gRecordReplayAssertFn) {
+    void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayAssert");
+    if (!fnptr) {
+      return;
+    }
+    gRecordReplayAssertFn = reinterpret_cast<void(*)(const char*, va_list)>(fnptr);
+  }
+
+  va_list ap;
+  va_start(ap, aFormat);
+  gRecordReplayAssertFn(aFormat, ap);
+  va_end(ap);
+}
+
 SkCachedData::SkCachedData(void* data, size_t size)
     : fData(data)
     , fSize(size)
@@ -32,6 +51,7 @@ SkCachedData::SkCachedData(size_t size, SkDiscardableMemory* dm)
 }
 
 SkCachedData::~SkCachedData() {
+    RecordReplayAssert("~SkCachedData %d", fStorageType);
     switch (fStorageType) {
         case kMalloc_StorageType:
             sk_free(fStorage.fMalloc);

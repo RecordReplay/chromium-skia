@@ -560,13 +560,16 @@ void SkResourceCache::CheckMessages() {
 bool SkResourceCache::Find(const Key& key, FindVisitor visitor, void* context) {
     RecordReplayAssert("SkResourceCache::Find");
     SkAutoMutexExclusive am(resource_cache_mutex());
-    return get_cache()->find(key, visitor, context);
+    bool rv = get_cache()->find(key, visitor, context);
+    RecordReplayAssert("SkResourceCache::Find Done %d", rv);
+    return rv;
 }
 
 void SkResourceCache::Add(Rec* rec, void* payload) {
     RecordReplayAssert("SkResourceCache::Add");
     SkAutoMutexExclusive am(resource_cache_mutex());
     get_cache()->add(rec, payload);
+    RecordReplayAssert("SkResourceCache::Add Done");
 }
 
 void SkResourceCache::VisitAll(Visitor visitor, void* context) {
