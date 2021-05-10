@@ -465,8 +465,10 @@ void SkResourceCache::checkMessages() {
     SkTArray<PurgeSharedIDMessage> msgs;
     fPurgeSharedIDInbox.poll(&msgs);
     for (int i = 0; i < msgs.count(); ++i) {
+        RecordReplayAssert("SkResourceCache::checkMessages #1");
         this->purgeSharedID(msgs[i].fSharedID);
     }
+    RecordReplayAssert("SkResourceCache::checkMessages Done");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
