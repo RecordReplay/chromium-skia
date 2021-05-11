@@ -30,7 +30,7 @@ void SkRecordReplayOrderedLock(int lock) {
   if (!gRecordReplayOrderedLockFn) {
     void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayOrderedLock");
     if (!fnptr) {
-      return 0;
+      return;
     }
     gRecordReplayOrderedLockFn = reinterpret_cast<void(*)(int)>(fnptr);
   }
@@ -44,7 +44,7 @@ void SkRecordReplayOrderedUnlock(int lock) {
   if (!gRecordReplayOrderedUnlockFn) {
     void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayOrderedUnlock");
     if (!fnptr) {
-      return 0;
+      return;
     }
     gRecordReplayOrderedUnlockFn = reinterpret_cast<void(*)(int)>(fnptr);
   }
