@@ -8,6 +8,50 @@
 #include "include/private/SkSemaphore.h"
 #include "src/core/SkLeanWindows.h"
 
+#include <dlfcn.h>
+
+static int (*gRecordReplayCreateOrderedLockFn)(const char*);
+
+int SkRecordReplayCreateOrderedLock(const char* ordered_name) {
+  if (!gRecordReplayCreateOrderedLockFn) {
+    void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayCreateOrderedLock");
+    if (!fnptr) {
+      return 0;
+    }
+    gRecordReplayCreateOrderedLockFn = reinterpret_cast<int(*)(const char*)>(fnptr);
+  }
+
+  return gRecordReplayCreateOrderedLockFn(ordered_name);
+}
+
+static void (*gRecordReplayOrderedLockFn)(int);
+
+void SkRecordReplayOrderedLock(int lock) {
+  if (!gRecordReplayOrderedLockFn) {
+    void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayOrderedLock");
+    if (!fnptr) {
+      return 0;
+    }
+    gRecordReplayOrderedLockFn = reinterpret_cast<void(*)(int)>(fnptr);
+  }
+
+  gRecordReplayOrderedLockFn(lock);
+}
+
+static void (*gRecordReplayOrderedUnlockFn)(int);
+
+void SkRecordReplayOrderedUnlock(int lock) {
+  if (!gRecordReplayOrderedUnlockFn) {
+    void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayOrderedUnlock");
+    if (!fnptr) {
+      return 0;
+    }
+    gRecordReplayOrderedUnlockFn = reinterpret_cast<void(*)(int)>(fnptr);
+  }
+
+  gRecordReplayOrderedUnlockFn(lock);
+}
+
 #if defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_IOS)
     #include <dispatch/dispatch.h>
 

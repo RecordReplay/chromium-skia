@@ -85,7 +85,8 @@ private:
 
 template <typename Message, typename IDType, bool AllowCopyableMessage>
 SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::Inbox(IDType uniqueID)
-        : fUniqueID(uniqueID) {
+        : fMessagesMutex("SkMessageBus::Inbox.fMessagesMutex"),
+          fUniqueID(uniqueID) {
     // Register ourselves with the corresponding message bus.
     auto* bus = SkMessageBus<Message, IDType, AllowCopyableMessage>::Get();
     SkAutoMutexExclusive lock(bus->fInboxesMutex);
