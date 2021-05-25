@@ -270,7 +270,7 @@ private:
 struct SkFaceRec;
 
 static SkMutex& f_t_mutex() {
-    static SkMutex& mutex = *(new SkMutex);
+    static SkMutex& mutex = *(new SkMutex("f_t_mutex"));
     return mutex;
 }
 
