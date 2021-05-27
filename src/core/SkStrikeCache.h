@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "include/private/SkMutex.h"
 #include "include/private/SkSpinlock.h"
 #include "include/private/SkTemplates.h"
 #include "src/core/SkDescriptor.h"
@@ -36,7 +37,7 @@ public:
 
 class SkStrikeCache final : public SkStrikeForGPUCacheInterface {
 public:
-    SkStrikeCache() = default;
+    SkStrikeCache() : fLock("SkStrikeCache.fLock") {}
 
     class Strike final : public SkRefCnt, public SkStrikeForGPU {
     public:
@@ -200,7 +201,7 @@ private:
 
     void forEachStrike(std::function<void(const Strike&)> visitor) const SK_EXCLUDES(fLock);
 
-    mutable SkSpinlock fLock;
+    mutable SkMutex fLock;
     Strike* fHead SK_GUARDED_BY(fLock) {nullptr};
     Strike* fTail SK_GUARDED_BY(fLock) {nullptr};
     struct StrikeTraits {
