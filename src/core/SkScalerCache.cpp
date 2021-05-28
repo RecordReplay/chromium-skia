@@ -32,7 +32,8 @@ SkScalerCache::SkScalerCache(
         , fScalerContext{std::move(scaler)}
         , fFontMetrics{use_or_generate_metrics(fontMetrics, fScalerContext.get())}
         , fRoundingSpec{fScalerContext->isSubpixel(),
-                        fScalerContext->computeAxisAlignmentForHText()} {
+                        fScalerContext->computeAxisAlignmentForHText()}
+        , fMu("SkScalerCache.fMu") {
     SkASSERT(fScalerContext != nullptr);
 }
 
