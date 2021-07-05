@@ -39,7 +39,7 @@ auto SkStrikeCache::findOrCreateStrike(const SkDescriptor& desc,
     SkAutoMutexExclusive ac(fLock);
     sk_sp<Strike> strike = this->internalFindStrikeOrNull(desc);
     SkRecordReplayAssert("SkStrikeCache::findOrCreateStrike #1 %d",
-                         SkRecordReplayPointerId(strike));
+                         SkRecordReplayPointerId(strike.get()));
     if (strike == nullptr) {
         auto scaler = typeface.createScalerContext(effects, &desc);
         strike = this->internalCreateStrike(desc, std::move(scaler));

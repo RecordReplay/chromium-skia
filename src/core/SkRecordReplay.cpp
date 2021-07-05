@@ -8,6 +8,8 @@
 #include "SkRecordReplay.h"
 
 #include <dlfcn.h>
+#include <stdarg.h>
+#include <string.h>
 
 static void (*gRecordReplayAssert)(const char*, va_list);
 static void (*gRecordReplayRegisterPointer)(const void* ptr);
@@ -16,9 +18,9 @@ static int (*gRecordReplayPointerId)(const void* ptr);
 
 template <typename Src, typename Dst>
 static inline void CastPointer(const Src src, Dst* dst) {
-  static_assert(sizeof(Src) == sizeof(uintptr_t), "bad size");
-  static_assert(sizeof(Dst) == sizeof(uintptr_t), "bad size");
-  memcpy((void*)dst, (const void*)&src, sizeof(uintptr_t));
+  static_assert(sizeof(Src) == sizeof(void*), "bad size");
+  static_assert(sizeof(Dst) == sizeof(void*), "bad size");
+  memcpy((void*)dst, (const void*)&src, sizeof(void*));
 }
 
 template <typename T>
