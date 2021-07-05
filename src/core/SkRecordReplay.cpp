@@ -14,13 +14,28 @@ static void (*gRecordReplayRegisterPointer)(const void* ptr);
 static void (*gRecordReplayUnregisterPointer)(const void* ptr);
 static int (*gRecordReplayPointerId)(const void* ptr);
 
+template <typename Src, typename Dst>
+static inline void CastPointer(const Src src, Dst* dst) {
+  static_assert(sizeof(Src) == sizeof(uintptr_t), "bad size");
+  static_assert(sizeof(Dst) == sizeof(uintptr_t), "bad size");
+  memcpy((void*)dst, (const void*)&src, sizeof(uintptr_t));
+}
+
+template <typename T>
+static void RecordReplayLoadSymbol(const char* name, T& function) {
+  void* sym = dlsym(RTLD_DEFAULT, name);
+  if (sym) {
+    CastPointer(sym, &function);
+  }
+}
+
 static inline bool EnsureInitialized() {
   static bool initialized = false;
   if (!initialized) {
-    RecordReplayLoadSymbol(handle, "RecordReplayAssert", gRecordReplayAssert);
-    RecordReplayLoadSymbol(handle, "RecordReplayRegisterPointer", gRecordReplayRegisterPointer);
-    RecordReplayLoadSymbol(handle, "RecordReplayUnregisterPointer", gRecordReplayUnregisterPointer);
-    RecordReplayLoadSymbol(handle, "RecordReplayPointerId", gRecordReplayPointerId);
+    RecordReplayLoadSymbol("RecordReplayAssert", gRecordReplayAssert);
+    RecordReplayLoadSymbol("RecordReplayRegisterPointer", gRecordReplayRegisterPointer);
+    RecordReplayLoadSymbol("RecordReplayUnregisterPointer", gRecordReplayUnregisterPointer);
+    RecordReplayLoadSymbol("RecordReplayPointerId", gRecordReplayPointerId);
     initialized = true;
   }
   return !!gRecordReplayAssert;
