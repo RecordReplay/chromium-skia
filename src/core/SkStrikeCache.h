@@ -16,6 +16,7 @@
 #include "include/private/SkTemplates.h"
 #include "src/core/SkDescriptor.h"
 #include "src/core/SkScalerCache.h"
+#include "src/core/SkRecordReplay.h"
 
 class SkTraceMemoryDump;
 
@@ -48,7 +49,13 @@ public:
                std::unique_ptr<SkStrikePinner> pinner)
                 : fStrikeCache{strikeCache}
                 , fScalerCache{desc, std::move(scaler), metrics}
-                , fPinner{std::move(pinner)} {}
+                , fPinner{std::move(pinner)} {
+          SkRecordReplayRegisterPointer(this);
+        }
+
+        ~Strike() {
+          SkRecordReplayUnregisterPointer(this);
+        }
 
         SkGlyph* mergeGlyphAndImage(SkPackedGlyphID toID, const SkGlyph& from) {
             auto [glyph, increase] = fScalerCache.mergeGlyphAndImage(toID, from);

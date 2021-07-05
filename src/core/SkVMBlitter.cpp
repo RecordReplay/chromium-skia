@@ -17,29 +17,11 @@
 #include "src/core/SkMatrixProvider.h"
 #include "src/core/SkOpts.h"
 #include "src/core/SkPaintPriv.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkVM.h"
 #include "src/shaders/SkColorFilterShader.h"
 
 #include <cinttypes>
-
-#include <dlfcn.h>
-
-static void (*gRecordReplayAssertFn)(const char*, va_list);
-
-static void RecordReplayAssert(const char* aFormat, ...) {
-  if (!gRecordReplayAssertFn) {
-    void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayAssert");
-    if (!fnptr) {
-      return;
-    }
-    gRecordReplayAssertFn = reinterpret_cast<void(*)(const char*, va_list)>(fnptr);
-  }
-
-  va_list ap;
-  va_start(ap, aFormat);
-  gRecordReplayAssertFn(aFormat, ap);
-  va_end(ap);
-}
 
 namespace {
 
@@ -573,7 +555,7 @@ namespace {
         {}
 
         ~Blitter() override {
-            RecordReplayAssert("Blitter::~Blitter");
+            SkRecordReplayAssert("Blitter::~Blitter");
             if (SkLRUCache<Key, skvm::Program>* cache = try_acquire_program_cache()) {
                 auto cache_program = [&](skvm::Program&& program, Coverage coverage) {
                     if (!program.empty()) {
