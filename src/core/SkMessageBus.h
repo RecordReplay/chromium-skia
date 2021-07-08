@@ -124,7 +124,8 @@ void SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::poll(SkTArray<M
 //   ----------------------- Implementation of SkMessageBus -----------------------
 
 template <typename Message, typename IDType, bool AllowCopyableMessage>
-SkMessageBus<Message, IDType, AllowCopyableMessage>::SkMessageBus() = default;
+SkMessageBus<Message, IDType, AllowCopyableMessage>::SkMessageBus()
+  : fInboxesMutex("SkMessageBus.fInboxesMutex") {}
 
 template <typename Message, typename IDType, bool AllowCopyableMessage>
 /*static*/ void SkMessageBus<Message, IDType, AllowCopyableMessage>::Post(Message m) {
