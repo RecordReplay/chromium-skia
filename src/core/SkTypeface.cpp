@@ -20,6 +20,10 @@
 #include "src/core/SkTypefaceCache.h"
 #include "src/sfnt/SkOTTable_OS_2.h"
 
+namespace gfx {
+  extern void FontDiagnostic(const char* format, ...);
+}
+
 SkTypeface::SkTypeface(const SkFontStyle& style, bool isFixedPitch)
     : fUniqueID(SkTypefaceCache::NewFontID()), fStyle(style), fIsFixedPitch(isFixedPitch) { }
 
@@ -132,12 +136,14 @@ sk_sp<SkTypeface> SkTypeface::MakeFromName(const char name[],
                             fontStyle.slant() == SkFontStyle::kUpright_Slant) &&
                            (fontStyle.weight() == SkFontStyle::kBold_Weight ||
                             fontStyle.weight() == SkFontStyle::kNormal_Weight)) {
+        gfx::FontDiagnostic("SkTypeface::MakeFromName #1");
         return sk_ref_sp(GetDefaultTypeface(static_cast<SkTypeface::Style>(
             (fontStyle.slant() == SkFontStyle::kItalic_Slant ? SkTypeface::kItalic :
                                                                SkTypeface::kNormal) |
             (fontStyle.weight() == SkFontStyle::kBold_Weight ? SkTypeface::kBold :
                                                                SkTypeface::kNormal))));
     }
+    gfx::FontDiagnostic("SkTypeface::MakeFromName #2");
     return SkFontMgr::RefDefault()->legacyMakeTypeface(name, fontStyle);
 }
 

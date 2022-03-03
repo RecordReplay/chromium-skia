@@ -18,6 +18,10 @@
 #include "src/ports/SkFontConfigTypeface.h"
 #include <new>
 
+namespace gfx {
+  extern void FontDiagnostic(const char* format, ...);
+}
+
 std::unique_ptr<SkStreamAsset> SkTypeface_FCI::onOpenStream(int* ttcIndex) const {
     *ttcIndex =  this->getIdentity().fTTCIndex;
 
@@ -310,6 +314,7 @@ protected:
     sk_sp<SkTypeface> onLegacyMakeTypeface(const char requestedFamilyName[],
                                            SkFontStyle requestedStyle) const override
     {
+        gfx::FontDiagnostic("SkFontMgr_FontConfigInterface::onLegacyMakeTypeface");
         SkAutoMutexExclusive ama(fMutex);
 
         // Check if this request is already in the request cache.
@@ -317,6 +322,7 @@ protected:
         std::unique_ptr<Request> request(Request::Create(requestedFamilyName, requestedStyle));
         sk_sp<SkTypeface> face = fCache.findAndRef(request.get());
         if (face) {
+            gfx::FontDiagnostic("SkFontMgr_FontConfigInterface::onLegacyMakeTypeface #1");
             return sk_sp<SkTypeface>(face);
         }
 
@@ -326,6 +332,7 @@ protected:
         if (!fFCI->matchFamilyName(requestedFamilyName, requestedStyle,
                                    &identity, &outFamilyName, &outStyle))
         {
+            gfx::FontDiagnostic("SkFontMgr_FontConfigInterface::onLegacyMakeTypeface #2");
             return nullptr;
         }
 
@@ -339,6 +346,7 @@ protected:
         // Add this request to the request cache.
         fCache.add(face, request.release());
 
+        gfx::FontDiagnostic("SkFontMgr_FontConfigInterface::onLegacyMakeTypeface #3 %d", !!face);
         return face;
     }
 };

@@ -27,6 +27,10 @@
 #include <fontconfig/fontconfig.h>
 #include <string.h>
 
+namespace gfx {
+  extern void FontDiagnostic(const char* format, ...);
+}
+
 class SkData;
 
 // FC_POSTSCRIPT_NAME was added with b561ff20 which ended up in 2.10.92
@@ -1031,6 +1035,8 @@ protected:
     }
 
     sk_sp<SkTypeface> onLegacyMakeTypeface(const char familyName[], SkFontStyle style) const override {
+        gfx::FontDiagnostic("SkFontMgr_fontconfig::onLegacyMakeTypeface");
+
         sk_sp<SkTypeface> typeface(this->matchFamilyStyle(familyName, style));
         if (typeface) {
             return typeface;
