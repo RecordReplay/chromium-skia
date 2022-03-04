@@ -506,34 +506,48 @@ SkFontConfigInterfaceDirect::~SkFontConfigInterfaceDirect() {
 
 bool SkFontConfigInterfaceDirect::isAccessible(const char* filename) {
     if (access(filename, R_OK) != 0) {
+        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isAccessible failed %s %s", filename, strerror(errno));
         return false;
     }
+    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isAccessible passed %s", filename);
     return true;
 }
 
 bool SkFontConfigInterfaceDirect::isValidPattern(FcPattern* pattern) {
+    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern Start");
+
 #ifdef SK_FONT_CONFIG_INTERFACE_ONLY_ALLOW_SFNT_FONTS
     const char* font_format = get_string(pattern, FC_FONTFORMAT);
+    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern font_format %s",
+                        font_format ? font_format : "<null>");
     if (font_format
         && 0 != strcmp(font_format, kFontFormatTrueType)
         && 0 != strcmp(font_format, kFontFormatCFF))
     {
+        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern #1");
         return false;
     }
 #endif
 
     // fontconfig can also return fonts which are unreadable
     const char* c_filename = get_string(pattern, FC_FILE);
+    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern c_filename %s",
+                        c_filename ? c_filename : "<null>");
     if (!c_filename) {
+        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern #2");
         return false;
     }
     UniqueFCConfig fcConfig(FcConfigReference(nullptr));
     const char* sysroot = (const char*)FcConfigGetSysRoot(fcConfig.get());
+    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern sysroot %s",
+                        sysroot ? sysroot : "<null>");
     SkString resolvedFilename;
     if (sysroot) {
         resolvedFilename = sysroot;
         resolvedFilename += c_filename;
         c_filename = resolvedFilename.c_str();
+        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern resolved_filename %s",
+                            c_filename);
     }
     return this->isAccessible(c_filename);
 }
@@ -542,12 +556,14 @@ bool SkFontConfigInterfaceDirect::isValidPattern(FcPattern* pattern) {
 FcPattern* SkFontConfigInterfaceDirect::MatchFont(FcFontSet* font_set,
                                                   const char* post_config_family,
                                                   const SkString& family) {
-  gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont Start");
+  gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont Start %d",
+                      font_set->nfont);
 
   // Older versions of fontconfig have a bug where they cannot select
   // only scalable fonts so we have to manually filter the results.
   FcPattern* match = nullptr;
   for (int i = 0; i < font_set->nfont; ++i) {
+    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont #0 %d", i);
     FcPattern* current = font_set->fonts[i];
     if (this->isValidPattern(current)) {
       gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont #1");
