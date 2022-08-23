@@ -11,6 +11,7 @@
 #include "include/core/SkPath.h"
 #include "include/core/SkTypeface.h"
 #include "src/core/SkEnumerate.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkScalerContext.h"
 
 static SkFontMetrics use_or_generate_metrics(
@@ -49,7 +50,14 @@ std::tuple<SkGlyphDigest, size_t> SkScalerCache::digest(SkPackedGlyphID packedGl
         return {*digest, 0};
     }
 
+    // https://linear.app/replay/issue/RUN-480
+    SkRecordReplayAssert("SkScalerCache::digest #1");
+
     SkGlyph* glyph = fAlloc.make<SkGlyph>(fScalerContext->makeGlyph(packedGlyphID));
+
+    // https://linear.app/replay/issue/RUN-480
+    SkRecordReplayAssert("SkScalerCache::digest #2");
+
     return {this->addGlyph(glyph), sizeof(SkGlyph)};
 }
 
