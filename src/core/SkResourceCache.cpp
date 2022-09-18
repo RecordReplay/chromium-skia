@@ -542,9 +542,13 @@ void SkResourceCache::CheckMessages() {
 }
 
 bool SkResourceCache::Find(const Key& key, FindVisitor visitor, void* context) {
+    // https://linear.app/replay/issue/RUN-593
     SkRecordReplayAssert("SkResourceCache::Find");
+
     SkAutoMutexExclusive am(resource_cache_mutex());
     bool rv = get_cache()->find(key, visitor, context);
+
+    // https://linear.app/replay/issue/RUN-593
     SkRecordReplayAssert("SkResourceCache::Find Done %d", rv);
     return rv;
 }
