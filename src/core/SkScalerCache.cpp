@@ -173,8 +173,8 @@ size_t SkScalerCache::commonFilterLoop(SkDrawableGlyphBuffer* drawables, Fn&& fn
     size_t total = 0;
     for (auto [i, packedID, pos] : SkMakeEnumerate(drawables->input())) {
         // https://linear.app/replay/issue/RUN-480
-        SkRecordReplayAssert("SkScalerCache::commonFilterLoop #2 %d %d %.2f %.2f",
-                             i, packedID, pos.x(), pos.y());
+        SkRecordReplayAssert("SkScalerCache::commonFilterLoop #2 %d %d %d",
+                             i, packedID, SkScalarsAreFinite(pos.x(), pos.y()));
 
         if (SkScalarsAreFinite(pos.x(), pos.y())) {
             auto [digest, size] = this->digest(packedID);
