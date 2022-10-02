@@ -447,10 +447,8 @@ void SkResourceCache::checkMessages() {
     SkTArray<PurgeSharedIDMessage> msgs;
     fPurgeSharedIDInbox.poll(&msgs);
     for (int i = 0; i < msgs.count(); ++i) {
-        SkRecordReplayAssert("SkResourceCache::checkMessages #1");
         this->purgeSharedID(msgs[i].fSharedID);
     }
-    SkRecordReplayAssert("SkResourceCache::checkMessages Done");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -476,67 +474,56 @@ static SkResourceCache* get_cache() {
 }
 
 size_t SkResourceCache::GetTotalBytesUsed() {
-    SkRecordReplayAssert("SkResourceCache::GetTotalBytesUsed");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->getTotalBytesUsed();
 }
 
 size_t SkResourceCache::GetTotalByteLimit() {
-    SkRecordReplayAssert("SkResourceCache::GetTotalByteLimit");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->getTotalByteLimit();
 }
 
 size_t SkResourceCache::SetTotalByteLimit(size_t newLimit) {
-    SkRecordReplayAssert("SkResourceCache::SetTotalByteLimit");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->setTotalByteLimit(newLimit);
 }
 
 SkResourceCache::DiscardableFactory SkResourceCache::GetDiscardableFactory() {
-    SkRecordReplayAssert("SkResourceCache::GetDiscardableFactory");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->discardableFactory();
 }
 
 SkCachedData* SkResourceCache::NewCachedData(size_t bytes) {
-    SkRecordReplayAssert("SkResourceCache::NewCachedData");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->newCachedData(bytes);
 }
 
 void SkResourceCache::Dump() {
-    SkRecordReplayAssert("SkResourceCache::Dump");
     SkAutoMutexExclusive am(resource_cache_mutex());
     get_cache()->dump();
 }
 
 size_t SkResourceCache::SetSingleAllocationByteLimit(size_t size) {
-    SkRecordReplayAssert("SkResourceCache::SetSingleAllocationByteLimit");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->setSingleAllocationByteLimit(size);
 }
 
 size_t SkResourceCache::GetSingleAllocationByteLimit() {
-    SkRecordReplayAssert("SkResourceCache::GetSingleAllocationByteLimit");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->getSingleAllocationByteLimit();
 }
 
 size_t SkResourceCache::GetEffectiveSingleAllocationByteLimit() {
-    SkRecordReplayAssert("SkResourceCache::GetEffectiveSingleAllocationByteLimit");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->getEffectiveSingleAllocationByteLimit();
 }
 
 void SkResourceCache::PurgeAll() {
-    SkRecordReplayAssert("SkResourceCache::PurgeAll");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->purgeAll();
 }
 
 void SkResourceCache::CheckMessages() {
-    SkRecordReplayAssert("SkResourceCache::CheckMessages");
     SkAutoMutexExclusive am(resource_cache_mutex());
     return get_cache()->checkMessages();
 }
@@ -554,14 +541,11 @@ bool SkResourceCache::Find(const Key& key, FindVisitor visitor, void* context) {
 }
 
 void SkResourceCache::Add(Rec* rec, void* payload) {
-    SkRecordReplayAssert("SkResourceCache::Add");
     SkAutoMutexExclusive am(resource_cache_mutex());
     get_cache()->add(rec, payload);
-    SkRecordReplayAssert("SkResourceCache::Add Done");
 }
 
 void SkResourceCache::VisitAll(Visitor visitor, void* context) {
-    SkRecordReplayAssert("SkResourceCache::VisitAll");
     SkAutoMutexExclusive am(resource_cache_mutex());
     get_cache()->visitAll(visitor, context);
 }

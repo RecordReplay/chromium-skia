@@ -124,9 +124,6 @@ void SkGlyphRunListPainter::drawForBitmapDevice(
 
             auto strike = strikeSpec.findOrCreateStrike();
 
-            SkRecordReplayAssert("SkGlyphRunListPainter::drawForBitmapDevice #5 %d",
-                                 SkRecordReplayPointerId(strike.get()));
-
             fDrawable.startBitmapDevice(
                     fRejects.source(), drawOrigin, deviceMatrix, strike->roundingSpec());
             strike->prepareForDrawingMasksCPU(&fDrawable);

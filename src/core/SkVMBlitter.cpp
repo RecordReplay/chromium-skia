@@ -555,7 +555,6 @@ namespace {
         {}
 
         ~Blitter() override {
-            SkRecordReplayAssert("Blitter::~Blitter");
             if (SkLRUCache<Key, skvm::Program>* cache = try_acquire_program_cache()) {
                 auto cache_program = [&](skvm::Program&& program, Coverage coverage) {
                     if (!program.empty()) {
