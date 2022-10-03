@@ -35,11 +35,8 @@ SkStrikeCache* SkStrikeCache::GlobalStrikeCache() {
 auto SkStrikeCache::findOrCreateStrike(const SkDescriptor& desc,
                                        const SkScalerContextEffects& effects,
                                        const SkTypeface& typeface) -> sk_sp<Strike> {
-    SkRecordReplayAssert("SkStrikeCache::findOrCreateStrike Start");
     SkAutoMutexExclusive ac(fLock);
     sk_sp<Strike> strike = this->internalFindStrikeOrNull(desc);
-    SkRecordReplayAssert("SkStrikeCache::findOrCreateStrike #1 %d",
-                         SkRecordReplayPointerId(strike.get()));
     if (strike == nullptr) {
         auto scaler = typeface.createScalerContext(effects, &desc);
         strike = this->internalCreateStrike(desc, std::move(scaler));

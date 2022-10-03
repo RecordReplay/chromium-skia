@@ -33,7 +33,6 @@ SkCachedData::SkCachedData(size_t size, SkDiscardableMemory* dm)
 }
 
 SkCachedData::~SkCachedData() {
-    SkRecordReplayAssert("~SkCachedData %d", fStorageType);
     switch (fStorageType) {
         case kMalloc_StorageType:
             sk_free(fStorage.fMalloc);
