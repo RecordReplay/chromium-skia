@@ -922,6 +922,9 @@ int get_glyph_run_intercepts(const SkGlyphRun& glyphRun,
 
 int SkTextBlob::getIntercepts(const SkScalar bounds[2], SkScalar intervals[],
                               const SkPaint* paint) const {
+    // https://linear.app/replay/issue/RUN-757
+    SkRecordReplayAssert("SkTextBlob::getIntercepts Start %.2f %.2f",
+                         bounds[1], bounds[2]);
 
     SkTLazy<SkPaint> defaultPaint;
     if (paint == nullptr) {
@@ -937,6 +940,9 @@ int SkTextBlob::getIntercepts(const SkScalar bounds[2], SkScalar intervals[],
     for (const SkGlyphRun& glyphRun : glyphRunList) {
         intervalCount = get_glyph_run_intercepts(glyphRun, *paint, bounds, intervals, &intervalCount);
     }
+
+    // https://linear.app/replay/issue/RUN-757
+    SkRecordReplayAssert("SkTextBlob::getIntercepts Done");
 
     return intervalCount;
 }
