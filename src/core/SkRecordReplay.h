@@ -13,4 +13,8 @@ extern void SkRecordReplayRegisterPointer(const void* ptr);
 extern void SkRecordReplayUnregisterPointer(const void* ptr);
 extern int SkRecordReplayPointerId(const void* ptr);
 
+extern bool SkRecordReplayAreEventsDisallowed();
+extern void SkRecordReplayBeginPassThroughEvents();
+extern void SkRecordReplayEndPassThroughEvents();
+
 #endif
