@@ -15,6 +15,9 @@ static void (*gRecordReplayAssert)(const char*, va_list);
 static void (*gRecordReplayRegisterPointer)(const void* ptr);
 static void (*gRecordReplayUnregisterPointer)(const void* ptr);
 static int (*gRecordReplayPointerId)(const void* ptr);
+static bool (*gRecordReplayAreEventsDisallowed)();
+static void (*gRecordReplayBeginPassThroughEvents)();
+static void (*gRecordReplayEndPassThroughEvents)();
 
 template <typename Src, typename Dst>
 static inline void CastPointer(const Src src, Dst* dst) {
@@ -38,6 +41,9 @@ static inline bool EnsureInitialized() {
     RecordReplayLoadSymbol("RecordReplayRegisterPointer", gRecordReplayRegisterPointer);
     RecordReplayLoadSymbol("RecordReplayUnregisterPointer", gRecordReplayUnregisterPointer);
     RecordReplayLoadSymbol("RecordReplayPointerId", gRecordReplayPointerId);
+    RecordReplayLoadSymbol("RecordReplayAreEventsDisallowed", gRecordReplayAreEventsDisallowed);
+    RecordReplayLoadSymbol("RecordReplayBeginPassThroughEvents", gRecordReplayBeginPassThroughEvents);
+    RecordReplayLoadSymbol("RecordReplayEndPassThroughEvents", gRecordReplayEndPassThroughEvents);
     initialized = true;
   }
   return !!gRecordReplayAssert;
@@ -69,4 +75,23 @@ int SkRecordReplayPointerId(const void* ptr) {
     return gRecordReplayPointerId(ptr);
   }
   return 0;
+}
+
+bool SkRecordReplayAreEventsDisallowed() {
+  if (EnsureInitialized()) {
+    return gRecordReplayAreEventsDisallowed();
+  }
+  return false;
+}
+
+void SkRecordReplayBeginPassThroughEvents() {
+  if (EnsureInitialized()) {
+    gRecordReplayBeginPassThroughEvents();
+  }
+}
+
+void SkRecordReplayEndPassThroughEvents() {
+  if (EnsureInitialized()) {
+    gRecordReplayEndPassThroughEvents();
+  }
 }
