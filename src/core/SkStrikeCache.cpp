@@ -37,6 +37,10 @@ auto SkStrikeCache::findOrCreateStrike(const SkDescriptor& desc,
                                        const SkTypeface& typeface) -> sk_sp<Strike> {
     SkAutoMutexExclusive ac(fLock);
     sk_sp<Strike> strike = this->internalFindStrikeOrNull(desc);
+
+    // https://linear.app/replay/issue/RUN-845
+    SkRecordReplayAssert("SkStrikeCache::findOrCreateStrike #1 %u %d", desc.getChecksum(), !!strike);
+
     if (strike == nullptr) {
         auto scaler = typeface.createScalerContext(effects, &desc);
         strike = this->internalCreateStrike(desc, std::move(scaler));
