@@ -5,6 +5,7 @@
 
 # Recipe which runs the Skia gsutils tests.
 
+PYTHON_VERSION_COMPATIBILITY = "PY3"
 
 DEPS = [
   'gsutil',
@@ -20,7 +21,8 @@ DEPS = [
 def RunSteps(api):
   api.vars.setup()
   api.gsutil.cp('test file', '/foo/file', 'gs://bar-bucket/file',
-                extra_args=['-Z'], multithread=True)
+                extra_gsutil_args=['--blah'], extra_args=['-Z'],
+                multithread=True)
 
 def GenTests(api):
   yield (

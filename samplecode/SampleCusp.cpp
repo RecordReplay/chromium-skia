@@ -97,7 +97,7 @@ struct data {
 {{{0x43480000,0x43960000},{0x436f0222,0x4328051c},{0x435c2222,0x43810f5c},{0x435ae000,0x4351e664},}},
 };
 
-size_t datCount = SK_ARRAY_COUNT(dat);
+size_t datCount = std::size(dat);
 
 class CuspView : public Sample {
 public:
@@ -144,12 +144,14 @@ protected:
         bool split;
         path = cusp(pts, pp, split, 8000, .125);
         auto debugOutCubic = [](const SkPoint* pts) {
-            return false; // comment out to capture stream of cusp'd cubics in stdout
-            SkDebugf("{{");
-            for (int i = 0; i < 4; ++i) {
-                SkDebugf("{0x%08x,0x%08x},", SkFloat2Bits(pts[i].fX), SkFloat2Bits(pts[i].fY));
+            if ((false)) { // enable to capture stream of cusp'd cubics in stdout
+                SkDebugf("{{");
+                for (int i = 0; i < 4; ++i) {
+                    SkDebugf("{0x%08x,0x%08x},", SkFloat2Bits(pts[i].fX), SkFloat2Bits(pts[i].fY));
+                }
+                SkDebugf("}},\n");
             }
-            SkDebugf("}},\n");
+            return false;
         };
         if (split) {
             debugOutCubic(&pp[0]);
@@ -162,7 +164,6 @@ protected:
         // draw time to make it easier to guess when the bad cubic was drawn
         std::string timeStr = std::to_string((float) (curTime - start) / 1000.f);
         canvas->drawSimpleText(timeStr.c_str(), timeStr.size(), SkTextEncoding::kUTF8, 20, 20, SkFont(), SkPaint());
-        SkDebugf("");
     }
 
     bool onAnimate(double nanos) override {

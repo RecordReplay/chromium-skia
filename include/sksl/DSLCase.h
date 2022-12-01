@@ -9,14 +9,14 @@
 #define SKSL_DSL_CASE
 
 #include "include/private/SkSLDefines.h"
+#include "include/private/SkTArray.h"
 #include "include/sksl/DSLExpression.h"
 #include "include/sksl/DSLStatement.h"
+#include "include/sksl/SkSLPosition.h"
 
-#include <memory>
+#include <utility>
 
 namespace SkSL {
-
-class Statement;
 
 namespace dsl {
 
@@ -27,29 +27,32 @@ public:
     DSLCase(DSLExpression value, Statements... statements)
         : fValue(std::move(value)) {
         fStatements.reserve_back(sizeof...(statements));
-        // in C++17, we could just do:
-        // (fStatements.push_back(DSLStatement(std::move(statements)).release()), ...);
-        int unused[] =
-          {0,
-           (static_cast<void>(fStatements.push_back(DSLStatement(std::move(statements)).release())),
-            0)...};
-        static_cast<void>(unused);
+        ((void)fStatements.push_back(DSLStatement(std::move(statements)).release()), ...);
     }
+
+    DSLCase(DSLExpression value, SkTArray<DSLStatement> statements,
+            Position pos = {});
+
+    DSLCase(DSLExpression value, SkSL::StatementArray statements,
+            Position pos = {});
 
     DSLCase(DSLCase&&);
 
-    DSLCase(DSLExpression value, SkSL::StatementArray statements);
-
     ~DSLCase();
+
+    DSLCase& operator=(DSLCase&&);
 
     void append(DSLStatement stmt);
 
 private:
     DSLExpression fValue;
     SkSL::StatementArray fStatements;
+    Position fPosition;
+
+    friend class DSLCore;
 
     template<class... Cases>
-    friend DSLPossibleStatement Switch(DSLExpression value, Cases... cases);
+    friend DSLStatement Switch(DSLExpression value, Cases... cases);
 };
 
 } // namespace dsl

@@ -6,13 +6,13 @@
  */
 
 #include "include/gpu/GrDirectContext.h"
-#include "src/gpu/GrDirectContextPriv.h"
-#include "src/gpu/GrMemoryPool.h"
-#include "src/gpu/GrOpFlushState.h"
-#include "src/gpu/GrOpsTask.h"
-#include "src/gpu/GrProxyProvider.h"
-#include "src/gpu/GrRecordingContextPriv.h"
-#include "src/gpu/ops/GrOp.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrMemoryPool.h"
+#include "src/gpu/ganesh/GrOpFlushState.h"
+#include "src/gpu/ganesh/GrProxyProvider.h"
+#include "src/gpu/ganesh/GrRecordingContextPriv.h"
+#include "src/gpu/ganesh/ops/GrOp.h"
+#include "src/gpu/ganesh/ops/OpsTask.h"
 #include "tests/Test.h"
 #include <iterator>
 
@@ -27,7 +27,7 @@ struct Range {
 
 static constexpr int kNumOpPositions = 4;
 static constexpr Range kRanges[] = {{0, 4,}, {1, 2}};
-static constexpr int kNumRanges = (int)SK_ARRAY_COUNT(kRanges);
+static constexpr int kNumRanges = (int)std::size(kRanges);
 static constexpr int kNumRepeats = 2;
 static constexpr int kNumOps = kNumRepeats * kNumOpPositions * kNumRanges;
 
@@ -72,7 +72,7 @@ static void init_combinable(int numGroups, Combinable* combinable, SkRandom* ran
     SkTDArray<int> groups[kNumOps];
     for (int i = 0; i < kNumOps; ++i) {
         auto& group = groups[random->nextULessThan(numGroups)];
-        for (int g = 0; g < group.count(); ++g) {
+        for (int g = 0; g < group.size(); ++g) {
             int j = group[g];
             if (random->nextUScalar1() < mergeProbability) {
                 (*combinable)[combinable_index(i, j)] = GrOp::CombineResult::kMerged;
@@ -127,7 +127,7 @@ private:
     void onPrePrepare(GrRecordingContext*,
                       const GrSurfaceProxyView& writeView,
                       GrAppliedClip*,
-                      const GrXferProcessor::DstProxyView&,
+                      const GrDstProxyView&,
                       GrXferBarrierFlags renderPassXferBarriers,
                       GrLoadOp colorLoadOp) override {}
 
@@ -140,7 +140,7 @@ private:
     }
 
     CombineResult onCombineIfPossible(GrOp* t, SkArenaAlloc* arenas, const GrCaps&) override {
-        // This op doesn't use the arenas, but make sure the GrOpsTask is sending it
+        // This op doesn't use the arenas, but make sure the OpsTask is sending it
         SkASSERT(arenas);
         (void) arenas;
         auto that = t->cast<TestOp>();
@@ -171,7 +171,7 @@ private:
  * adding the ops in all possible orders and verifies that the chained executions don't violate
  * painter's order.
  */
-DEF_GPUTEST(OpChainTest, reporter, /*ctxInfo*/) {
+DEF_GANESH_TEST(OpChainTest, reporter, /*ctxInfo*/, CtsEnforcement::kApiLevel_T) {
     sk_sp<GrDirectContext> dContext = GrDirectContext::MakeMock(nullptr);
     SkASSERT(dContext);
     const GrCaps* caps = dContext->priv().caps();
@@ -183,11 +183,12 @@ DEF_GPUTEST(OpChainTest, reporter, /*ctxInfo*/) {
     static const GrSurfaceOrigin kOrigin = kTopLeft_GrSurfaceOrigin;
     auto proxy = dContext->priv().proxyProvider()->createProxy(
             format, kDims, GrRenderable::kYes, 1, GrMipmapped::kNo, SkBackingFit::kExact,
-            SkBudgeted::kNo, GrProtected::kNo, GrInternalSurfaceFlags::kNone);
+            SkBudgeted::kNo, GrProtected::kNo, /*label=*/"OpChainTest",
+            GrInternalSurfaceFlags::kNone);
     SkASSERT(proxy);
     proxy->instantiate(dContext->priv().resourceProvider());
 
-    GrSwizzle writeSwizzle = caps->getWriteSwizzle(format, GrColorType::kRGBA_8888);
+    skgpu::Swizzle writeSwizzle = caps->getWriteSwizzle(format, GrColorType::kRGBA_8888);
 
     int result[result_width()];
     int validResult[result_width()];
@@ -205,6 +206,7 @@ DEF_GPUTEST(OpChainTest, reporter, /*ctxInfo*/) {
     bool repeat = false;
     Combinable combinable;
     GrDrawingManager* drawingMgr = dContext->priv().drawingManager();
+    sk_sp<GrArenas> arenas = sk_make_sp<GrArenas>();
     for (int p = 0; p < kNumPermutations; ++p) {
         for (int i = 0; i < kNumOps - 2 && !repeat; ++i) {
             // The current implementation of nextULessThan() is biased. :(
@@ -215,14 +217,14 @@ DEF_GPUTEST(OpChainTest, reporter, /*ctxInfo*/) {
         for (int g = 1; g < kNumOps; ++g) {
             for (int c = 0; c < kNumCombinabilitiesPerGrouping; ++c) {
                 init_combinable(g, &combinable, &random);
-                GrTokenTracker tracker;
+                skgpu::TokenTracker tracker;
                 GrOpFlushState flushState(dContext->priv().getGpu(),
                                           dContext->priv().resourceProvider(),
                                           &tracker);
-                GrOpsTask opsTask(drawingMgr,
-                                  dContext->priv().arenas(),
-                                  GrSurfaceProxyView(proxy, kOrigin, writeSwizzle),
-                                  dContext->priv().auditTrail());
+                skgpu::v1::OpsTask opsTask(drawingMgr,
+                                           GrSurfaceProxyView(proxy, kOrigin, writeSwizzle),
+                                           dContext->priv().auditTrail(),
+                                           arenas);
                 // This assumes the particular values of kRanges.
                 std::fill_n(result, result_width(), -1);
                 std::fill_n(validResult, result_width(), -1);
@@ -241,7 +243,7 @@ DEF_GPUTEST(OpChainTest, reporter, /*ctxInfo*/) {
                                   GrTextureResolveManager(dContext->priv().drawingManager()),
                                   *caps);
                 }
-                opsTask.makeClosed(*caps);
+                opsTask.makeClosed(dContext.get());
                 opsTask.prepare(&flushState);
                 opsTask.execute(&flushState);
                 opsTask.endFlush(drawingMgr);

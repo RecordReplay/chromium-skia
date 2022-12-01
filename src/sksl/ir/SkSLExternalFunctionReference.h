@@ -8,8 +8,8 @@
 #ifndef SKSL_EXTERNALFUNCTIONREFERENCE
 #define SKSL_EXTERNALFUNCTIONREFERENCE
 
-#include "src/sksl/SkSLExternalFunction.h"
 #include "src/sksl/ir/SkSLExpression.h"
+#include "src/sksl/ir/SkSLExternalFunction.h"
 
 namespace SkSL {
 
@@ -20,26 +20,22 @@ namespace SkSL {
  */
 class ExternalFunctionReference final : public Expression {
 public:
-    static constexpr Kind kExpressionKind = Kind::kExternalFunctionReference;
+    inline static constexpr Kind kExpressionKind = Kind::kExternalFunctionReference;
 
-    ExternalFunctionReference(int offset, const ExternalFunction* ef)
-        : INHERITED(offset, kExpressionKind, &ef->type())
+    ExternalFunctionReference(Position pos, const ExternalFunction* ef)
+        : INHERITED(pos, kExpressionKind, &ef->type())
         , fFunction(*ef) {}
 
     const ExternalFunction& function() const {
         return fFunction;
     }
 
-    bool hasProperty(Property property) const override {
-        return property == Property::kSideEffects;
+    std::string description(OperatorPrecedence) const override {
+        return std::string(this->function().name());
     }
 
-    String description() const override {
-        return String(this->function().name());
-    }
-
-    std::unique_ptr<Expression> clone() const override {
-        return std::make_unique<ExternalFunctionReference>(fOffset, &this->function());
+    std::unique_ptr<Expression> clone(Position pos) const override {
+        return std::make_unique<ExternalFunctionReference>(pos, &this->function());
     }
 
 private:

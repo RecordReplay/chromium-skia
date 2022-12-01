@@ -10,6 +10,7 @@ import calendar
 import json
 import os
 
+PYTHON_VERSION_COMPATIBILITY = "PY3"
 
 DEPS = [
   'env',
@@ -152,7 +153,6 @@ def GenTests(api):
                                      'skimage', 'VERSION'),
           api.path['start_dir'].join('skia', 'infra', 'bots', 'assets',
                                      'skp', 'VERSION'),
-          api.path['start_dir'].join('tmp', 'uninteresting_hashes.txt')
       ) +
       api.step_data('get swarming bot id',
           stdout=api.raw_io.output('skia-bot-123')) +

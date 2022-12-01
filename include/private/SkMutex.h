@@ -25,6 +25,10 @@ public:
       fOrderedLockId = SkRecordReplayCreateOrderedLock(ordered_name);
     }
 
+    ~SkMutex() {
+        this->assertNotHeld();
+    }
+
     void acquire() SK_ACQUIRE() {
         if (fOrderedLockId) {
           SkRecordReplayOrderedLock(fOrderedLockId);
@@ -46,6 +50,10 @@ public:
 
     void assertHeld() SK_ASSERT_CAPABILITY(this) {
         SkASSERT(fOwner == SkGetThreadID());
+    }
+
+    void assertNotHeld() {
+        SkASSERT(fOwner == kIllegalThreadID);
     }
 
 private:

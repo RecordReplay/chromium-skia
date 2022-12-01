@@ -17,6 +17,8 @@
 
 namespace skottie::internal {
 
+#ifdef SK_ENABLE_SKSL
+
 namespace  {
 
 // The contrast effect transfer function can be approximated with the following
@@ -69,19 +71,17 @@ static sk_sp<SkData> make_contrast_coeffs(float contrast) {
     return SkData::MakeWithCopy(&coeffs, sizeof(coeffs));
 }
 
-static constexpr char CONTRAST_EFFECT[] = R"(
-    uniform half a;
-    uniform half b;
-    uniform half c;
-    uniform shader input;
+static constexpr char CONTRAST_EFFECT[] =
+    "uniform half a;"
+    "uniform half b;"
+    "uniform half c;"
 
-    half4 main() {
+    "half4 main(half4 color) {"
         // C' = a*C^3 + b*C^2 + c*C
-        half4 color = sample(input);
-        color.rgb = ((a*color.rgb + b)*color.rgb + c)*color.rgb;
-        return color;
-    }
-)";
+        "color.rgb = ((a*color.rgb + b)*color.rgb + c)*color.rgb;"
+        "return color;"
+    "}"
+;
 #else
 // More accurate (but slower) approximation:
 //
@@ -95,16 +95,14 @@ static sk_sp<SkData> make_contrast_coeffs(float contrast) {
     return SkData::MakeWithCopy(&coeff_a, sizeof(coeff_a));
 }
 
-static constexpr char CONTRAST_EFFECT[] = R"(
-    uniform half a;
-    uniform shader input;
+static constexpr char CONTRAST_EFFECT[] =
+    "uniform half a;"
 
-    half4 main() {
-        half4 color = sample(input);
-        color.rgb += a * sin(color.rgb * 6.283185);
-        return color;
-    }
-)";
+    "half4 main(half4 color) {"
+        "color.rgb += a * sin(color.rgb * 6.283185);"
+        "return color;"
+    "}"
+;
 
 #endif
 
@@ -122,16 +120,14 @@ static sk_sp<SkData> make_brightness_coeffs(float brightness) {
     return SkData::MakeWithCopy(&coeff_a, sizeof(coeff_a));
 }
 
-static constexpr char BRIGHTNESS_EFFECT[] = R"(
-    uniform half a;
-    uniform shader input;
+static constexpr char BRIGHTNESS_EFFECT[] =
+    "uniform half a;"
 
-    half4 main() {
-        half4 color = sample(input);
-        color.rgb = 1 - pow(1 - color.rgb, half3(a));
-        return color;
-    }
-)";
+    "half4 main(half4 color) {"
+        "color.rgb = 1 - pow(1 - color.rgb, half3(a));"
+        "return color;"
+    "}"
+;
 
 class BrightnessContrastAdapter final : public DiscardableAdapterBase<BrightnessContrastAdapter,
                                                                       sksg::ExternalColorFilter> {
@@ -140,8 +136,8 @@ public:
                               const AnimationBuilder& abuilder,
                               sk_sp<sksg::RenderNode> layer)
         : INHERITED(sksg::ExternalColorFilter::Make(std::move(layer)))
-        , fBrightnessEffect(SkRuntimeEffect::Make(SkString(BRIGHTNESS_EFFECT)).effect)
-        , fContrastEffect(SkRuntimeEffect::Make(SkString(CONTRAST_EFFECT)).effect) {
+        , fBrightnessEffect(SkRuntimeEffect::MakeForColorFilter(SkString(BRIGHTNESS_EFFECT)).effect)
+        , fContrastEffect(SkRuntimeEffect::MakeForColorFilter(SkString(CONTRAST_EFFECT)).effect) {
         SkASSERT(fBrightnessEffect);
         SkASSERT(fContrastEffect);
 
@@ -220,15 +216,12 @@ private:
         const auto brightness = SkTPin(fBrightness, -150.0f, 150.0f) / 150, // [-1.0 .. 1]
                      contrast = SkTPin(fContrast  ,  -50.0f, 100.0f) / 100; // [-0.5 .. 1]
 
-        sk_sp<SkColorFilter> input = nullptr;
-
         auto b_eff = SkScalarNearlyZero(brightness)
                    ? nullptr
-                   : fBrightnessEffect->makeColorFilter(make_brightness_coeffs(brightness),
-                                                        &input, 1),
+                   : fBrightnessEffect->makeColorFilter(make_brightness_coeffs(brightness)),
              c_eff = SkScalarNearlyZero(fContrast)
                    ? nullptr
-                   : fContrastEffect->makeColorFilter(make_contrast_coeffs(contrast), &input, 1);
+                   : fContrastEffect->makeColorFilter(make_contrast_coeffs(contrast));
 
         return SkColorFilters::Compose(std::move(c_eff), std::move(b_eff));
     }
@@ -245,11 +238,18 @@ private:
 
 } // namespace
 
+#endif  // SK_ENABLE_SKSL
+
 sk_sp<sksg::RenderNode> EffectBuilder::attachBrightnessContrastEffect(
         const skjson::ArrayValue& jprops, sk_sp<sksg::RenderNode> layer) const {
+#ifdef SK_ENABLE_SKSL
     return fBuilder->attachDiscardableAdapter<BrightnessContrastAdapter>(jprops,
                                                                          *fBuilder,
                                                                          std::move(layer));
+#else
+    // TODO(skia:12197)
+    return layer;
+#endif
 }
 
 } // namespace skottie::internal

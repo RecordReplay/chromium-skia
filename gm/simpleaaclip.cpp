@@ -21,7 +21,6 @@
 #include "include/core/SkTypeface.h"
 #include "include/core/SkTypes.h"
 #include "src/core/SkAAClip.h"
-#include "src/core/SkClipOpPriv.h"
 #include "src/core/SkMask.h"
 #include "tools/ToolUtils.h"
 
@@ -84,11 +83,11 @@ protected:
     }
 
     void buildRgn(SkAAClip* clip, SkClipOp op) {
-        clip->setPath(fBasePath, nullptr, true);
+        clip->setPath(fBasePath, fBasePath.getBounds().roundOut(), true);
 
         SkAAClip clip2;
-        clip2.setPath(fRectPath, nullptr, true);
-        clip->op(clip2, (SkRegion::Op)op);
+        clip2.setPath(fRectPath, fRectPath.getBounds().roundOut(), true);
+        clip->op(clip2, op);
     }
 
     void drawOrig(SkCanvas* canvas) {
@@ -162,15 +161,15 @@ protected:
             const char*     fName;
             SkClipOp        fOp;
         } gOps[] = {
-                {SK_ColorBLACK, "Difference", kDifference_SkClipOp},
-                {SK_ColorRED, "Intersect", kIntersect_SkClipOp},
+                {SK_ColorBLACK, "Difference", SkClipOp::kDifference},
+                {SK_ColorRED, "Intersect", SkClipOp::kIntersect},
         };
 
         SkPaint textPaint;
         SkFont  font(ToolUtils::create_portable_typeface(), 24);
         int xOff = 0;
 
-        for (size_t op = 0; op < SK_ARRAY_COUNT(gOps); op++) {
+        for (size_t op = 0; op < std::size(gOps); op++) {
             canvas->drawString(gOps[op].fName, 75.0f, 50.0f, font, textPaint);
 
             if (kAAClip_GeomType == fGeomType) {

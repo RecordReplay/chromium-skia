@@ -5,8 +5,22 @@
  * found in the LICENSE file.
  */
 
-#include "src/core/SkTSort.h"
 #include "src/pathops/SkPathOpsTSect.h"
+
+#include "include/private/SkMacros.h"
+#include "include/private/SkTArray.h"
+#include "src/core/SkTSort.h"
+#include "src/pathops/SkIntersections.h"
+#include "src/pathops/SkPathOpsConic.h"
+#include "src/pathops/SkPathOpsCubic.h"
+#include "src/pathops/SkPathOpsLine.h"
+#include "src/pathops/SkPathOpsQuad.h"
+
+#include <cfloat>
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <utility>
 
 #define COINCIDENT_SPAN_COUNT 9
 
@@ -40,7 +54,7 @@ void SkTCoincident::setPerp(const SkTCurve& c1, double t,
     fMatch = cPt.approximatelyEqual(fPerpPt);
 #if DEBUG_T_SECT
     if (fMatch) {
-        SkDebugf("");  // allow setting breakpoint
+        SkDebugf("%s", "");  // allow setting breakpoint
     }
 #endif
 }
@@ -233,7 +247,7 @@ bool SkTSpan::initBounds(const SkTCurve& c) {
     fDeleted = false;
 #if DEBUG_T_SECT
     if (fCollapsed) {
-        SkDebugf("");  // for convenient breakpoints
+        SkDebugf("%s", "");  // for convenient breakpoints
     }
 #endif
     return fBounds.valid();
@@ -1084,7 +1098,7 @@ int SkTSect::linesIntersect(SkTSpan* span,
     if (thisRayI.used() > 1) {
         int ptMatches = 0;
         for (int tIndex = 0; tIndex < thisRayI.used(); ++tIndex) {
-            for (int lIndex = 0; lIndex < (int) SK_ARRAY_COUNT(thisLine.fPts); ++lIndex) {
+            for (int lIndex = 0; lIndex < (int) std::size(thisLine.fPts); ++lIndex) {
                 ptMatches += thisRayI.pt(tIndex).approximatelyEqual(thisLine.fPts[lIndex]);
             }
         }
@@ -1095,7 +1109,7 @@ int SkTSect::linesIntersect(SkTSpan* span,
     if (oppRayI.used() > 1) {
         int ptMatches = 0;
         for (int oIndex = 0; oIndex < oppRayI.used(); ++oIndex) {
-            for (int lIndex = 0; lIndex < (int) SK_ARRAY_COUNT(oppLine.fPts); ++lIndex) {
+            for (int lIndex = 0; lIndex < (int) std::size(oppLine.fPts); ++lIndex) {
                 ptMatches += oppRayI.pt(oIndex).approximatelyEqual(oppLine.fPts[lIndex]);
             }
         }
@@ -2045,9 +2059,8 @@ void SkTSect::BinarySearch(SkTSect* sect1,
             break;
         }
         SkTSpan* result2 = sect2->fHead;
-        bool found = false;
         while (result2) {
-            found |= closest.find(result1, result2  SkDEBUGPARAMS(intersections));
+            closest.find(result1, result2  SkDEBUGPARAMS(intersections));
             result2 = result2->fNext;
         }
     } while ((result1 = result1->fNext));

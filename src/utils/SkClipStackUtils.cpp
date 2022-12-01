@@ -5,6 +5,11 @@
 * found in the LICENSE file.
 */
 
+#include "src/utils/SkClipStackUtils.h"
+
+#include "include/core/SkClipOp.h"
+#include "include/core/SkPath.h"
+#include "include/core/SkPathTypes.h"
 #include "include/pathops/SkPathOps.h"
 #include "src/core/SkClipStack.h"
 
@@ -25,8 +30,10 @@ void SkClipStack_AsPath(const SkClipStack& cs, SkPath* path) {
         }
 
         SkClipOp elementOp = element->getOp();
-        if (elementOp == kReplace_SkClipOp) {
+        if (element->isReplaceOp()) {
             *path = operand;
+            // TODO: Once expanding clip ops are removed, we can switch the iterator to be top
+            // to bottom, which allows us to break here on encountering a replace op.
         } else {
             Op(*path, operand, (SkPathOp)elementOp, path);
         }

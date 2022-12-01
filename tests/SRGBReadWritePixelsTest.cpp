@@ -6,15 +6,16 @@
  */
 
 #include "include/core/SkCanvas.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkSurface.h"
 #include "include/gpu/GrDirectContext.h"
-#include "src/gpu/GrCaps.h"
-#include "src/gpu/GrDirectContextPriv.h"
-#include "src/gpu/GrImageInfo.h"
-#include "src/gpu/GrSurfaceContext.h"
-#include "src/gpu/GrSurfaceDrawContext.h"
-#include "src/gpu/SkGr.h"
+#include "src/gpu/ganesh/GrCaps.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrImageInfo.h"
+#include "src/gpu/ganesh/SkGr.h"
+#include "src/gpu/ganesh/SurfaceContext.h"
 #include "tests/Test.h"
+#include "tests/TestUtils.h"
 
 // using anonymous namespace because these functions are used as template params.
 namespace {
@@ -122,7 +123,7 @@ typedef bool (*CheckFn) (uint32_t orig, uint32_t actual, float error);
 
 void read_and_check_pixels(skiatest::Reporter* reporter,
                            GrDirectContext* dContext,
-                           GrSurfaceContext* sContext,
+                           skgpu::v1::SurfaceContext* sc,
                            uint32_t* origData,
                            const SkImageInfo& dstInfo, CheckFn checker, float error,
                            const char* subtestName) {
@@ -130,7 +131,7 @@ void read_and_check_pixels(skiatest::Reporter* reporter,
     GrPixmap readPM = GrPixmap::Allocate(dstInfo);
     memset(readPM.addr(), 0, sizeof(uint32_t)*w*h);
 
-    if (!sContext->readPixels(dContext, readPM, {0, 0})) {
+    if (!sc->readPixels(dContext, readPM, {0, 0})) {
         ERRORF(reporter, "Could not read pixels for %s.", subtestName);
         return;
     }
@@ -188,17 +189,24 @@ static std::unique_ptr<uint32_t[]> make_data() {
     return data;
 }
 
-static std::unique_ptr<GrSurfaceContext> make_surface_context(Encoding contextEncoding,
-                                                              GrRecordingContext* rContext,
-                                                              skiatest::Reporter* reporter) {
-    auto surfaceContext = GrSurfaceDrawContext::Make(
-            rContext, GrColorType::kRGBA_8888, encoding_as_color_space(contextEncoding),
-            SkBackingFit::kExact, {kW, kH}, 1, GrMipmapped::kNo, GrProtected::kNo,
-            kBottomLeft_GrSurfaceOrigin, SkBudgeted::kNo);
-    if (!surfaceContext) {
+static std::unique_ptr<skgpu::v1::SurfaceContext> make_surface_context(
+        Encoding contextEncoding,
+        GrRecordingContext* rContext,
+        skiatest::Reporter* reporter) {
+    GrImageInfo info(GrColorType::kRGBA_8888,
+                     kPremul_SkAlphaType,
+                     encoding_as_color_space(contextEncoding),
+                     kW, kH);
+
+    auto sc = CreateSurfaceContext(rContext,
+                                   info,
+                                   SkBackingFit::kExact,
+                                   kBottomLeft_GrSurfaceOrigin,
+                                   GrRenderable::kYes);
+    if (!sc) {
         ERRORF(reporter, "Could not create %s surface context.", encoding_as_str(contextEncoding));
     }
-    return std::move(surfaceContext);
+    return sc;
 }
 
 static void test_write_read(Encoding contextEncoding, Encoding writeEncoding, Encoding readEncoding,
@@ -211,7 +219,7 @@ static void test_write_read(Encoding contextEncoding, Encoding writeEncoding, En
     auto writeII = SkImageInfo::Make(kW, kH, kRGBA_8888_SkColorType, kPremul_SkAlphaType,
                                      encoding_as_color_space(writeEncoding));
     auto data = make_data();
-    GrPixmap dataPM(writeII, data.get(), kW*sizeof(uint32_t));
+    GrCPixmap dataPM(writeII, data.get(), kW*sizeof(uint32_t));
     if (!surfaceContext->writePixels(dContext, dataPM, {0, 0})) {
         ERRORF(reporter, "Could not write %s to %s surface context.",
                encoding_as_str(writeEncoding), encoding_as_str(contextEncoding));
@@ -229,18 +237,21 @@ static void test_write_read(Encoding contextEncoding, Encoding writeEncoding, En
 
 // Test all combinations of writePixels/readPixels where the surface context/write source/read dst
 // are sRGB, linear, or untagged RGBA_8888.
-DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SRGBReadWritePixels, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(SRGBReadWritePixels,
+                                       reporter,
+                                       ctxInfo,
+                                       CtsEnforcement::kApiLevel_T) {
     auto context = ctxInfo.directContext();
     if (!context->priv().caps()->getDefaultBackendFormat(GrColorType::kRGBA_8888_SRGB,
                                                          GrRenderable::kNo).isValid()) {
         return;
     }
     // We allow more error on GPUs with lower precision shader variables.
-    float error = context->priv().caps()->shaderCaps()->halfIs32Bits() ? 0.5f : 1.2f;
+    float error = context->priv().caps()->shaderCaps()->fHalfIs32Bits ? 0.5f : 1.2f;
     // For the all-sRGB case, we allow a small error only for devices that have
     // precision variation because the sRGB data gets converted to linear and back in
     // the shader.
-    float smallError = context->priv().caps()->shaderCaps()->halfIs32Bits() ? 0.0f : 1.f;
+    float smallError = context->priv().caps()->shaderCaps()->fHalfIs32Bits ? 0.0f : 1.f;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Write sRGB data to a sRGB context - no conversion on the write.

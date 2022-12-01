@@ -8,7 +8,6 @@
 #include "gm/gm.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
-#include "include/core/SkFilterQuality.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPoint.h"
@@ -26,7 +25,7 @@ protected:
     void onOnceBeforeDraw() override {
         const SkVector vectors[] = { { 1, 0 }, { 0, 1 } };
 
-        for (size_t i = 0; i < SK_ARRAY_COUNT(vectors); ++i) {
+        for (size_t i = 0; i < std::size(vectors); ++i) {
            auto& set = fSets.push_back();
 
            set.fVector = vectors[i];
@@ -63,7 +62,7 @@ protected:
             {{ 550.5f, 750.5f }, { -1, -1 }},
         };
 
-        for (size_t i = 0; i < SK_ARRAY_COUNT(cfgs); ++i) {
+        for (size_t i = 0; i < std::size(cfgs); ++i) {
             SkAutoCanvasRestore acr(canvas, true);
             canvas->translate(cfgs[i].offset.x(), cfgs[i].offset.y());
             canvas->scale(cfgs[i].scale.x(), cfgs[i].scale.y());
@@ -119,16 +118,16 @@ private:
         for (int i = 0; i < fSets.count(); ++i) {
             auto& set = fSets[i];
             SkPoint lastPt;
-            for (size_t j = 0; j < SK_ARRAY_COUNT(AAs); ++j) {
+            for (size_t j = 0; j < std::size(AAs); ++j) {
                 paint.setAntiAlias(AAs[j]);
-                for (size_t k = 0; k < SK_ARRAY_COUNT(samplings); ++k) {
+                for (size_t k = 0; k < std::size(samplings); ++k) {
                     lastPt = drawSet(canvas, set, samplings[k], paint);
                     canvas->translate((kSegLen + 4) * set.fVector.y(),
                                       (kSegLen + 4) * set.fVector.x());
                 }
             }
             canvas->translate(lastPt.x() + kSegLen,
-                - SkIntToScalar(kSegLen + 4) * SK_ARRAY_COUNT(samplings) * SK_ARRAY_COUNT(AAs));
+                - SkIntToScalar(kSegLen + 4) * std::size(samplings) * std::size(AAs));
         }
     }
 
@@ -151,8 +150,8 @@ private:
         return pt;
     }
 
-    static constexpr unsigned  kSegLen = 15;
-    static constexpr unsigned  kStretchFactor = 4;
+    inline static constexpr unsigned  kSegLen = 15;
+    inline static constexpr unsigned  kStretchFactor = 4;
     SkSTArray<2, ImageSet> fSets;
 
     using INHERITED = GM;

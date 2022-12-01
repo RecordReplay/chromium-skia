@@ -7,7 +7,7 @@
 
 #include <Carbon/Carbon.h>
 
-#include "src/core/SkUtils.h"
+#include "include/core/SkTypes.h"
 #include "tools/sk_app/mac/WindowContextFactory_mac.h"
 #include "tools/sk_app/mac/Window_mac.h"
 #include "tools/skui/ModifierKey.h"
@@ -136,18 +136,22 @@ bool Window_mac::attach(BackendType attachType) {
         case kMetal_BackendType:
             fWindowContext = MakeMetalForMac(info, fRequestedDisplayParams);
             break;
+#ifdef SK_GRAPHITE_ENABLED
+        case kGraphiteMetal_BackendType:
+            fWindowContext = MakeGraphiteMetalForMac(info, fRequestedDisplayParams);
+            break;
+#endif
 #endif
 #ifdef SK_GL
         case kNativeGL_BackendType:
-        default:
             fWindowContext = MakeGLForMac(info, fRequestedDisplayParams);
             break;
-#else
-        default:
-#endif
         case kRaster_BackendType:
             fWindowContext = MakeRasterForMac(info, fRequestedDisplayParams);
             break;
+#endif
+        default:
+            SkASSERT_RELEASE(false);
     }
     this->onBackendCreated();
 
@@ -233,7 +237,7 @@ static skui::Key get_key(unsigned short vk) {
         { kVK_ANSI_Z,        skui::Key::kZ },
     };
 
-    for (size_t i = 0; i < SK_ARRAY_COUNT(gPair); i++) {
+    for (size_t i = 0; i < std::size(gPair); i++) {
         if (gPair[i].fVK == vk) {
             return gPair[i].fKey;
         }

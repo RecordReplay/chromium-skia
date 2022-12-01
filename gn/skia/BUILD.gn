@@ -6,6 +6,11 @@
 if (is_fuchsia) {
   import("//build/fuchsia/sdk.gni")
 }
+if (is_wasm) {
+  import("../toolchain/wasm.gni")
+}
+
+import("../skia.gni")
 
 declare_args() {
   extra_asmflags = []
@@ -22,12 +27,12 @@ declare_args() {
 if (is_ios && xcode_sysroot == "") {
   if (is_tvos) {
     sdk = "appletvos"
-    if (target_cpu == "x86" || target_cpu == "x64") {
+    if (ios_use_simulator) {
       sdk = "appletvsimulator"
     }
   } else {
     sdk = "iphoneos"
-    if (target_cpu == "x86" || target_cpu == "x64") {
+    if (ios_use_simulator) {
       sdk = "iphonesimulator"
     }
   }
@@ -49,6 +54,7 @@ config("default") {
   cflags = []
   cflags_c = []
   cflags_cc = []
+  cflags_objcc = []
   defines = []
   ldflags = []
   libs = []
@@ -267,19 +273,29 @@ config("default") {
     }
   }
 
-  if (sanitize != "" && sanitize != "MSVC") {
+  if (is_wasm) {
+    cflags += [ "--sysroot=$skia_emsdk_dir/upstream/emscripten/cache/sysroot" ]
+    ldflags += [ "--sysroot=$skia_emsdk_dir/upstream/emscripten/cache/sysroot" ]
+  }
+
+  if (is_win && !is_clang && sanitize == "ASAN") {
+    sanitizers = "address"
+    cflags += [ "/fsanitize=$sanitizers" ]
+  } else if (sanitize != "" && sanitize != "MSVC") {
     # You can either pass the sanitizers directly, e.g. "address,undefined",
     # or pass one of the couple common aliases used by the bots.
     sanitizers = sanitize
 
     if (sanitize == "ASAN") {
       # ASAN implicitly runs all UBSAN checks also.
-      sanitizers = "undefined,address"
+      sanitizers = "undefined,address,float-divide-by-zero"
 
       if (is_android) {
-        # TODO(mtklein): work out UBSAN link errors
+        # TODO(skia:13344): work out UBSAN link errors
         sanitizers = "address"
       }
+    } else if (sanitize == "HWASAN") {
+      sanitizers = "hwaddress"
     } else if (sanitize == "TSAN") {
       sanitizers = "thread"
     } else if (sanitize == "MSAN") {
@@ -325,17 +341,22 @@ config("default") {
       cflags_cc += [ "-fno-aligned-allocation" ]
     }
   }
+
+  cflags_objcc += cflags_cc
 }
 
 # See skia:9731.
 config("recover_pointer_overflow") {
-  cflags = [ "-fsanitize-recover=pointer-overflow" ]
+  if (sanitize == "ASAN" && !(is_win && !is_clang)) {
+    cflags = [ "-fsanitize-recover=pointer-overflow" ]
+  }
 }
 
 config("no_exceptions") {
   # Exceptions are disabled by default on Windows.  (Use /EHsc to enable them.)
   if (!is_win) {
     cflags_cc = [ "-fno-exceptions" ]
+    cflags_objcc = cflags_cc
   }
 }
 
@@ -410,6 +431,10 @@ config("warnings") {
       "-Weverything",
       "-Wno-unknown-warning-option",  # Let older Clangs ignore newer Clangs'
                                       # warnings.
+
+      # This was deprecated in Clang 14 and removed in Clang 15. It might still
+      # fire with older Clangs, so disable it explicitly.
+      "-Wno-weak-template-vtables",
     ]
 
     if (target_cpu == "arm" && is_ios) {
@@ -441,25 +466,21 @@ config("warnings") {
       "-Wno-double-promotion",
       "-Wno-exit-time-destructors",  # TODO: OK outside libskia
       "-Wno-float-equal",
-      "-Wno-format-nonliteral",
       "-Wno-global-constructors",  # TODO: OK outside libskia
       "-Wno-missing-prototypes",
       "-Wno-missing-variable-declarations",
       "-Wno-pedantic",
       "-Wno-reserved-id-macro",
-      "-Wno-shadow",
+      "-Wno-reserved-identifier",
       "-Wno-shift-sign-overflow",
       "-Wno-signed-enum-bitfield",
       "-Wno-switch-enum",
+      "-Wno-thread-safety-negative",
       "-Wno-undef",
-      "-Wno-unreachable-code",
       "-Wno-unreachable-code-break",
       "-Wno-unreachable-code-return",
       "-Wno-unused-macros",
       "-Wno-unused-member-function",
-      "-Wno-unused-template",
-      "-Wno-zero-as-null-pointer-constant",
-      "-Wno-thread-safety-negative",
       "-Wno-non-c-typedef-for-linkage",  # Dawn, not Skia per se.
     ]
     cflags_cc += [
@@ -473,8 +494,12 @@ config("warnings") {
       "-Wno-deprecated",
       "-Wno-missing-noreturn",
       "-Wno-old-style-cast",
-      "-Wno-padded",
       "-Wno-newline-eof",
+      "-Wno-padded",
+      "-Wno-shadow-field-in-constructor",
+      "-Wno-shadow-uncaptured-local",
+      "-Wno-zero-as-null-pointer-constant",  # VK_NULL_HANDLE is defined as 0
+      "-Wno-declaration-after-statement",
 
       # https://quuxplusone.github.io/blog/2020/08/26/wrange-loop-analysis/
       # https://bugzilla.mozilla.org/show_bug.cgi?id=1683213
@@ -526,6 +551,8 @@ config("warnings") {
       "-Wdeprecated-writable-str",
     ]
   }
+
+  cflags_objcc += cflags_cc
 }
 config("warnings_for_public_headers") {
   if (is_clang) {
@@ -571,6 +598,7 @@ config("no_rtti") {
       cflags_cc = [ "/GR-" ]
     } else {
       cflags_cc = [ "-fno-rtti" ]
+      cflags_objcc = cflags_cc
     }
   }
 }
@@ -581,27 +609,27 @@ config("optimize") {
       "/O2",
       "/Zc:inline",
     ]
+    if (skia_enable_optimize_size) {
+      cflags += [ "/Os" ]
+    }
     ldflags = [
       "/OPT:ICF",
       "/OPT:REF",
     ]
   } else {
-    cflags = [ "-O3" ]
+    if (skia_enable_optimize_size) {
+      cflags = [ "-Oz" ]
+    } else {
+      cflags = [ "-O3" ]
+    }
     if (is_mac || is_ios) {
       ldflags = [ "-dead_strip" ]
-    } else {
+    } else if (!is_wasm) {
       cflags += [
         "-fdata-sections",
         "-ffunction-sections",
       ]
       ldflags = [ "-Wl,--gc-sections" ]
-    }
-    if (target_cpu == "wasm") {
-      # The compiler asks us to add an optimization flag to both cflags
-      # and ldflags to cut down on the local variables,
-      # for performance reasons.
-      # The "linking" step is the conversion to javascript.
-      ldflags += [ "-O3" ]
     }
   }
 }

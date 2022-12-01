@@ -1,10 +1,24 @@
 ### Compilation failed:
 
-error: 3: type 'void' not allowed in this context
-error: 4: type 'void' not allowed in this context
-error: 6: type 'void' not allowed in this context
-error: 7: type 'void' not allowed in this context
-error: 8: type 'void' may not be used in an array
-error: 9: type 'void' not allowed in this context
-error: 10: type 'void' not allowed in this context
+error: 1: type 'void' may not be used in an array
+void a[2];
+^^^^^^^^^
+error: 2: type 'void' may not be used in an array
+void[2] b;
+^^^^^^^
+error: 4: type 'void' may not be used in an array
+void[2] funcF() {}
+^^^^^^^
+error: 4: function 'funcF' can exit without returning a value
+void[2] funcF() {}
+                ^^
+error: 5: type 'void' may not be used in an array
+void funcG() { void g[2]; }
+               ^^^^^^^^^
+error: 6: type 'void' may not be used in an array
+void funcH() { void[2] h; }
+               ^^^^^^^
+error: 7: type 'void' may not be used in an array
+void funcI() { void[2]; }
+               ^^^^^^^
 7 errors

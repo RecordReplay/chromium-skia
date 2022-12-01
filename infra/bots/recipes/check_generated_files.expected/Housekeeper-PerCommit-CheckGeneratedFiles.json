@@ -2,8 +2,7 @@
   {
     "cmd": [
       "python",
-      "-u",
-      "\nimport subprocess\nimport sys\n\nwhich = 'where' if sys.platform == 'win32' else 'which'\ngit = subprocess.check_output([which, 'git'])\nprint 'git was found at %s' % git\nif 'cipd_bin_packages' not in git:\n  print >> sys.stderr, 'Git must be obtained through CIPD.'\n  sys.exit(1)\n"
+      "\nfrom __future__ import print_function\nimport subprocess\nimport sys\n\nwhich = 'where' if sys.platform == 'win32' else 'which'\ngit = subprocess.check_output([which, 'git']).decode('utf-8')\nprint('git was found at %s' % git)\nif 'cipd_bin_packages' not in git:\n  print('Git must be obtained through CIPD.', file=sys.stderr)\n  sys.exit(1)\n"
     ],
     "env": {
       "CHROME_HEADLESS": "1",
@@ -12,21 +11,22 @@
     "name": "Assert that Git is from CIPD",
     "~followup_annotations": [
       "@@@STEP_LOG_LINE@python.inline@@@@",
+      "@@@STEP_LOG_LINE@python.inline@from __future__ import print_function@@@",
       "@@@STEP_LOG_LINE@python.inline@import subprocess@@@",
       "@@@STEP_LOG_LINE@python.inline@import sys@@@",
       "@@@STEP_LOG_LINE@python.inline@@@@",
       "@@@STEP_LOG_LINE@python.inline@which = 'where' if sys.platform == 'win32' else 'which'@@@",
-      "@@@STEP_LOG_LINE@python.inline@git = subprocess.check_output([which, 'git'])@@@",
-      "@@@STEP_LOG_LINE@python.inline@print 'git was found at %s' % git@@@",
+      "@@@STEP_LOG_LINE@python.inline@git = subprocess.check_output([which, 'git']).decode('utf-8')@@@",
+      "@@@STEP_LOG_LINE@python.inline@print('git was found at %s' % git)@@@",
       "@@@STEP_LOG_LINE@python.inline@if 'cipd_bin_packages' not in git:@@@",
-      "@@@STEP_LOG_LINE@python.inline@  print >> sys.stderr, 'Git must be obtained through CIPD.'@@@",
+      "@@@STEP_LOG_LINE@python.inline@  print('Git must be obtained through CIPD.', file=sys.stderr)@@@",
       "@@@STEP_LOG_LINE@python.inline@  sys.exit(1)@@@",
       "@@@STEP_LOG_END@python.inline@@@"
     ]
   },
   {
     "cmd": [
-      "vpython",
+      "vpython3",
       "-u",
       "RECIPE_MODULE[recipe_engine::file]/resources/fileutil.py",
       "--json-output",
@@ -41,7 +41,7 @@
   },
   {
     "cmd": [
-      "vpython",
+      "vpython3",
       "-u",
       "RECIPE_MODULE[recipe_engine::file]/resources/fileutil.py",
       "--json-output",
@@ -54,7 +54,7 @@
   },
   {
     "cmd": [
-      "python",
+      "vpython3",
       "-u",
       "RECIPE_MODULE[depot_tools::bot_update]/resources/bot_update.py",
       "--spec-path",
@@ -70,12 +70,14 @@
       "--output_json",
       "/path/to/tmp/json",
       "--revision",
-      "skia@abc123"
+      "skia@abc123",
+      "--download_topics"
     ],
     "cwd": "[START_DIR]/cache/work",
     "env": {
+      "DEPOT_TOOLS_COLLECT_METRICS": "0",
       "GIT_HTTP_LOW_SPEED_LIMIT": "102400",
-      "GIT_HTTP_LOW_SPEED_TIME": "300"
+      "GIT_HTTP_LOW_SPEED_TIME": "1800"
     },
     "env_suffixes": {
       "DEPOT_TOOLS_UPDATE": [
@@ -104,7 +106,7 @@
       "@@@STEP_LOG_LINE@json.output@  \"patch_root\": \"skia\", @@@",
       "@@@STEP_LOG_LINE@json.output@  \"properties\": {@@@",
       "@@@STEP_LOG_LINE@json.output@    \"got_revision\": \"abc123\", @@@",
-      "@@@STEP_LOG_LINE@json.output@    \"got_revision_cp\": \"refs/heads/master@{#164710}\"@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"got_revision_cp\": \"refs/heads/main@{#164710}\"@@@",
       "@@@STEP_LOG_LINE@json.output@  }, @@@",
       "@@@STEP_LOG_LINE@json.output@  \"root\": \"skia\", @@@",
       "@@@STEP_LOG_LINE@json.output@  \"source_manifest\": {@@@",
@@ -122,12 +124,12 @@
       "@@@STEP_LOG_LINE@json.output@}@@@",
       "@@@STEP_LOG_END@json.output@@@",
       "@@@SET_BUILD_PROPERTY@got_revision@\"abc123\"@@@",
-      "@@@SET_BUILD_PROPERTY@got_revision_cp@\"refs/heads/master@{#164710}\"@@@"
+      "@@@SET_BUILD_PROPERTY@got_revision_cp@\"refs/heads/main@{#164710}\"@@@"
     ]
   },
   {
     "cmd": [
-      "vpython",
+      "vpython3",
       "-u",
       "RECIPE_MODULE[recipe_engine::file]/resources/fileutil.py",
       "--json-output",
@@ -155,6 +157,38 @@
   },
   {
     "cmd": [
+      "realpath",
+      "[START_DIR]/go/go/VERSION"
+    ],
+    "cwd": "[START_DIR]/cache/work/skia",
+    "name": "realpath go/go/VERSION"
+  },
+  {
+    "cmd": [
+      "dirname",
+      ""
+    ],
+    "cwd": "[START_DIR]/cache/work/skia",
+    "name": "dirname"
+  },
+  {
+    "cmd": [
+      "realpath",
+      "[START_DIR]/go/go/VERSION"
+    ],
+    "cwd": "[START_DIR]/cache/work/skia",
+    "name": "realpath go/go/VERSION (2)"
+  },
+  {
+    "cmd": [
+      "dirname",
+      ""
+    ],
+    "cwd": "[START_DIR]/cache/work/skia",
+    "name": "dirname (2)"
+  },
+  {
+    "cmd": [
       "make",
       "-C",
       "tools/gpu/gl/interface",
@@ -171,32 +205,7 @@
   },
   {
     "cmd": [
-      "python",
-      "-u",
-      "import os\nimport subprocess\n\nfor r, d, files in os.walk(os.path.join('[START_DIR]/cache/work/skia', 'src')):\n  for f in files:\n    if f.endswith('.fp'):\n      path = os.path.join(r, f)\n      print 'touch %s' % path\n      subprocess.check_call(['touch', path])\n"
-    ],
-    "cwd": "[START_DIR]/cache/work/skia",
-    "env": {
-      "CHROME_HEADLESS": "1",
-      "PATH": "<PATH>:RECIPE_REPO[depot_tools]"
-    },
-    "name": "touch fp files",
-    "~followup_annotations": [
-      "@@@STEP_LOG_LINE@python.inline@import os@@@",
-      "@@@STEP_LOG_LINE@python.inline@import subprocess@@@",
-      "@@@STEP_LOG_LINE@python.inline@@@@",
-      "@@@STEP_LOG_LINE@python.inline@for r, d, files in os.walk(os.path.join('[START_DIR]/cache/work/skia', 'src')):@@@",
-      "@@@STEP_LOG_LINE@python.inline@  for f in files:@@@",
-      "@@@STEP_LOG_LINE@python.inline@    if f.endswith('.fp'):@@@",
-      "@@@STEP_LOG_LINE@python.inline@      path = os.path.join(r, f)@@@",
-      "@@@STEP_LOG_LINE@python.inline@      print 'touch %s' % path@@@",
-      "@@@STEP_LOG_LINE@python.inline@      subprocess.check_call(['touch', path])@@@",
-      "@@@STEP_LOG_END@python.inline@@@"
-    ]
-  },
-  {
-    "cmd": [
-      "vpython",
+      "vpython3",
       "-u",
       "RECIPE_MODULE[recipe_engine::file]/resources/fileutil.py",
       "--json-output",
@@ -216,7 +225,6 @@
   {
     "cmd": [
       "python",
-      "-u",
       "[START_DIR]/cache/work/skia/bin/fetch-gn"
     ],
     "cwd": "[START_DIR]/cache/work/skia",
@@ -230,7 +238,6 @@
   {
     "cmd": [
       "python",
-      "-u",
       "[START_DIR]/cache/work/skia/bin/fetch-clang-format"
     ],
     "cwd": "[START_DIR]/cache/work/skia",
@@ -262,7 +269,7 @@
       "[START_DIR]/cache/work/skia/bin/gn",
       "gen",
       "[START_DIR]/build/out/Release",
-      "--args=cc=\"[START_DIR]/clang_linux/bin/clang\" cc_wrapper=\"[START_DIR]/ccache_linux/bin/ccache\" cxx=\"[START_DIR]/clang_linux/bin/clang++\" extra_cflags=[\"-B[START_DIR]/clang_linux/bin\", \"-DPLACEHOLDER_clang_linux_version=42\"] extra_ldflags=[\"-B[START_DIR]/clang_linux/bin\", \"-fuse-ld=lld\", \"-L[START_DIR]/clang_linux/lib\"] is_debug=false skia_compile_processors=true skia_compile_sksl_tests=true skia_generate_workarounds=true werror=true"
+      "--args=cc=\"[START_DIR]/clang_linux/bin/clang\" cc_wrapper=\"[START_DIR]/ccache_linux/bin/ccache\" cxx=\"[START_DIR]/clang_linux/bin/clang++\" extra_cflags=[\"-B[START_DIR]/clang_linux/bin\", \"-DPLACEHOLDER_clang_linux_version=42\"] extra_ldflags=[\"-B[START_DIR]/clang_linux/bin\", \"-fuse-ld=lld\", \"-L[START_DIR]/clang_linux/lib\"] is_debug=false skia_compile_modules=true skia_compile_sksl_tests=true skia_generate_workarounds=true werror=true"
     ],
     "cwd": "[START_DIR]/cache/work/skia",
     "env": {
@@ -324,8 +331,7 @@
   {
     "cmd": [
       "python",
-      "-u",
-      "\ndiff1 = ''''''\n\ndiff2 = ''''''\n\nif diff1 != diff2:\n  print 'Generated files have been edited!'\n  exit(1)\n"
+      "\ndiff1 = ''''''\n\ndiff2 = ''''''\n\nif diff1 != diff2:\n  print('Generated files have been edited!')\n  exit(1)\n"
     ],
     "cwd": "[START_DIR]/cache/work/skia",
     "env": {
@@ -340,7 +346,7 @@
       "@@@STEP_LOG_LINE@python.inline@diff2 = ''''''@@@",
       "@@@STEP_LOG_LINE@python.inline@@@@",
       "@@@STEP_LOG_LINE@python.inline@if diff1 != diff2:@@@",
-      "@@@STEP_LOG_LINE@python.inline@  print 'Generated files have been edited!'@@@",
+      "@@@STEP_LOG_LINE@python.inline@  print('Generated files have been edited!')@@@",
       "@@@STEP_LOG_LINE@python.inline@  exit(1)@@@",
       "@@@STEP_LOG_END@python.inline@@@"
     ]

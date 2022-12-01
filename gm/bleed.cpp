@@ -10,7 +10,6 @@
 #include "include/core/SkBlurTypes.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
-#include "include/core/SkFilterQuality.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkMaskFilter.h"
@@ -34,7 +33,7 @@
 /** Creates an image with two one-pixel wide borders around a checkerboard. The checkerboard is 2x2
     checks where each check has as many pixels as is necessary to fill the interior. It returns
     the image and a src rect that bounds the checkerboard portion. */
-std::tuple<sk_sp<SkImage>, SkRect> make_ringed_image(int width, int height) {
+std::tuple<sk_sp<SkImage>, SkRect> make_ringed_image(SkCanvas* canvas, int width, int height) {
 
     // These are kRGBA_8888_SkColorType values.
     static constexpr uint32_t kOuterRingColor = 0xFFFF0000,
@@ -102,7 +101,8 @@ std::tuple<sk_sp<SkImage>, SkRect> make_ringed_image(int width, int height) {
         scanline[x] = kOuterRingColor;
     }
     bitmap.setImmutable();
-    return {bitmap.asImage(), SkRect::Make({2, 2, width - 2, height - 2})};
+    return { ToolUtils::MakeTextureImage(canvas, bitmap.asImage()),
+             SkRect::Make({2, 2, width - 2, height - 2})};
 }
 
 /**
@@ -128,13 +128,17 @@ protected:
     void drawImage(SkCanvas* canvas, sk_sp<SkImage> image, SkRect srcRect, SkRect dstRect,
                    const SkSamplingOptions& sampling, SkPaint* paint) {
         if (fBatch) {
+            if (!image) {
+                return;
+            }
+
             SkCanvas::ImageSetEntry imageSetEntry[1];
             imageSetEntry[0].fImage = image;
             imageSetEntry[0].fSrcRect = srcRect;
             imageSetEntry[0].fDstRect = dstRect;
             imageSetEntry[0].fAAFlags = paint->isAntiAlias() ? SkCanvas::kAll_QuadAAFlags
                                                              : SkCanvas::kNone_QuadAAFlags;
-            canvas->experimental_DrawEdgeAAImageSet(imageSetEntry, SK_ARRAY_COUNT(imageSetEntry),
+            canvas->experimental_DrawEdgeAAImageSet(imageSetEntry, std::size(imageSetEntry),
                                                     /*dstClips=*/nullptr,
                                                     /*preViewMatrices=*/nullptr,
                                                     sampling, paint, fConstraint);
@@ -153,7 +157,7 @@ protected:
         paint.setColor(SK_ColorBLUE);
         paint.setAntiAlias(aa);
 
-        drawImage(canvas, fSmallImage, fSmallSrcRect, dst, sampling, &paint);
+        this->drawImage(canvas, fSmallImage, fSmallSrcRect, dst, sampling, &paint);
     }
 
     // Draw the area of interest of the large image
@@ -166,7 +170,7 @@ protected:
         paint.setColor(SK_ColorBLUE);
         paint.setAntiAlias(aa);
 
-        drawImage(canvas, fBigImage, fBigSrcRect, dst, sampling, &paint);
+        this->drawImage(canvas, fBigImage, fBigSrcRect, dst, sampling, &paint);
     }
 
     // Draw upper-left 1/4 of the area of interest of the large image
@@ -183,7 +187,7 @@ protected:
         paint.setColor(SK_ColorBLUE);
         paint.setAntiAlias(aa);
 
-        drawImage(canvas, fBigImage, src, dst, sampling, &paint);
+        this->drawImage(canvas, fBigImage, src, dst, sampling, &paint);
     }
 
     // Draw the area of interest of the small image with a normal blur
@@ -198,7 +202,7 @@ protected:
         paint.setColor(SK_ColorBLUE);
         paint.setAntiAlias(aa);
 
-        drawImage(canvas, fSmallImage, fSmallSrcRect, dst, sampling, &paint);
+        this->drawImage(canvas, fSmallImage, fSmallSrcRect, dst, sampling, &paint);
     }
 
     // Draw the area of interest of the small image with a outer blur
@@ -213,15 +217,18 @@ protected:
         paint.setColor(SK_ColorBLUE);
         paint.setAntiAlias(aa);
 
-        drawImage(canvas, fSmallImage, fSmallSrcRect, dst, sampling, &paint);
-    }
-
-    void onOnceBeforeDraw() override {
-        std::tie(fBigImage, fBigSrcRect) = make_ringed_image(2*kMaxTextureSize, 2*kMaxTextureSize);
-        std::tie(fSmallImage, fSmallSrcRect) = make_ringed_image(kSmallSize, kSmallSize);
+        this->drawImage(canvas, fSmallImage, fSmallSrcRect, dst, sampling, &paint);
     }
 
     void onDraw(SkCanvas* canvas) override {
+        if (!fSmallImage) {
+            std::tie(fBigImage, fBigSrcRect) = make_ringed_image(canvas,
+                                                                 2*kMaxTextureSize,
+                                                                 2*kMaxTextureSize);
+            std::tie(fSmallImage, fSmallSrcRect) = make_ringed_image(canvas,
+                                                                     kSmallSize, kSmallSize);
+        }
+
         canvas->clear(SK_ColorGRAY);
         std::vector<SkMatrix> matrices;
         // Draw with identity
@@ -238,9 +245,8 @@ protected:
         // Align the next set with the middle of the previous in y, translated to the right in x.
         SkPoint corners[] = {{0, 0}, {0, kBottom}, {kWidth, kBottom}, {kWidth, 0}};
         matrices.back().mapPoints(corners, 4);
-        SkScalar y = (corners[0].fY + corners[1].fY + corners[2].fY + corners[3].fY) / 4;
-        SkScalar x = std::max({corners[0].fX, corners[1].fX, corners[2].fX, corners[3].fX});
-        m.setTranslate(x, y);
+        m.setTranslate(std::max({corners[0].fX, corners[1].fX, corners[2].fX, corners[3].fX}),
+                       (corners[0].fY + corners[1].fY + corners[2].fY + corners[3].fY) / 4);
         m.preScale(0.2f, 0.2f);
         matrices.push_back(m);
 
@@ -299,23 +305,23 @@ protected:
     }
 
 private:
-    static constexpr int kBlockSize = 70;
-    static constexpr int kBlockSpacing = 12;
+    inline static constexpr int kBlockSize = 70;
+    inline static constexpr int kBlockSpacing = 12;
 
-    static constexpr int kCol0X = kBlockSpacing;
-    static constexpr int kCol1X = 2*kBlockSpacing + kBlockSize;
-    static constexpr int kCol2X = 3*kBlockSpacing + 2*kBlockSize;
-    static constexpr int kWidth = 4*kBlockSpacing + 3*kBlockSize;
+    inline static constexpr int kCol0X = kBlockSpacing;
+    inline static constexpr int kCol1X = 2*kBlockSpacing + kBlockSize;
+    inline static constexpr int kCol2X = 3*kBlockSpacing + 2*kBlockSize;
+    inline static constexpr int kWidth = 4*kBlockSpacing + 3*kBlockSize;
 
-    static constexpr int kRow0Y = kBlockSpacing;
-    static constexpr int kRow1Y = 2*kBlockSpacing + kBlockSize;
-    static constexpr int kRow2Y = 3*kBlockSpacing + 2*kBlockSize;
-    static constexpr int kRow3Y = 4*kBlockSpacing + 3*kBlockSize;
-    static constexpr int kRow4Y = 5*kBlockSpacing + 4*kBlockSize;
+    inline static constexpr int kRow0Y = kBlockSpacing;
+    inline static constexpr int kRow1Y = 2*kBlockSpacing + kBlockSize;
+    inline static constexpr int kRow2Y = 3*kBlockSpacing + 2*kBlockSize;
+    inline static constexpr int kRow3Y = 4*kBlockSpacing + 3*kBlockSize;
+    inline static constexpr int kRow4Y = 5*kBlockSpacing + 4*kBlockSize;
 
-    static constexpr int kSmallSize = 6;
+    inline static constexpr int kSmallSize = 6;
     // This must be at least as large as the GM width and height so that a surface can be made.
-    static constexpr int kMaxTextureSize = 1000;
+    inline static constexpr int kMaxTextureSize = 1000;
 
     SkString fShortName;
     sk_sp<SkImage> fBigImage;
@@ -395,5 +401,3 @@ DEF_SIMPLE_GM(bleed_downscale, canvas, 360, 240) {
         canvas->translate(0, 120);
     }
 }
-
-

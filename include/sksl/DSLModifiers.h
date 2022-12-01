@@ -8,8 +8,9 @@
 #ifndef SKSL_DSL_MODIFIERS
 #define SKSL_DSL_MODIFIERS
 
+#include "include/core/SkSpan.h"
 #include "include/private/SkSLModifiers.h"
-#include "include/private/SkTArray.h"
+#include "include/sksl/DSLLayout.h"
 
 namespace SkSL {
 
@@ -19,29 +20,45 @@ class DSLField;
 class DSLType;
 
 enum Modifier {
-    kNo_Modifier            =       0,
-    kConst_Modifier         = 1 <<  0,
-    kIn_Modifier            = 1 <<  1,
-    kOut_Modifier           = 1 <<  2,
-    kInOut_Modifier         = kIn_Modifier | kOut_Modifier,
-    kUniform_Modifier       = 1 <<  3,
-    kFlat_Modifier          = 1 <<  4,
-    kNoPerspective_Modifier = 1 <<  5,
+    kNo_Modifier            = SkSL::Modifiers::kNo_Flag,
+    kConst_Modifier         = SkSL::Modifiers::kConst_Flag,
+    kIn_Modifier            = SkSL::Modifiers::kIn_Flag,
+    kOut_Modifier           = SkSL::Modifiers::kOut_Flag,
+    kInOut_Modifier         = SkSL::Modifiers::kIn_Flag | SkSL::Modifiers::kOut_Flag,
+    kUniform_Modifier       = SkSL::Modifiers::kUniform_Flag,
+    kFlat_Modifier          = SkSL::Modifiers::kFlat_Flag,
+    kNoPerspective_Modifier = SkSL::Modifiers::kNoPerspective_Flag,
 };
 
 class DSLModifiers {
 public:
+    DSLModifiers(int flags = 0, Position pos = {})
+        : DSLModifiers(DSLLayout(), flags, pos) {}
 
-    DSLModifiers() {}
+    DSLModifiers(DSLLayout layout, int flags = 0, Position pos = {})
+        : fModifiers(layout.fSkSLLayout, flags)
+        , fPosition(pos) {}
 
-    DSLModifiers(int flags)
-        : fModifiers(SkSL::Layout(), flags) {}
+    int& flags() {
+        return fModifiers.fFlags;
+    }
+
+    const int& flags() const {
+        return fModifiers.fFlags;
+    }
+
+    DSLLayout layout() const {
+        return DSLLayout(fModifiers.fLayout);
+    }
 
 private:
     SkSL::Modifiers fModifiers;
+    Position fPosition;
 
-    friend DSLType Struct(const char* name, SkTArray<DSLField> fields);
-    friend class DSLVar;
+    friend DSLType Struct(std::string_view name, SkSpan<DSLField> fields, Position pos);
+    friend class DSLCore;
+    friend class DSLFunction;
+    friend class DSLType;
     friend class DSLWriter;
 };
 

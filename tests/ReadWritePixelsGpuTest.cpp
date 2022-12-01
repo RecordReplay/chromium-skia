@@ -12,9 +12,11 @@
 #include "include/gpu/GrDirectContext.h"
 #include "src/core/SkAutoPixmapStorage.h"
 #include "src/core/SkConvertPixels.h"
-#include "src/gpu/GrDirectContextPriv.h"
-#include "src/gpu/GrImageInfo.h"
-#include "src/gpu/GrSurfaceContext.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrImageInfo.h"
+#include "src/gpu/ganesh/SurfaceContext.h"
+#include "src/gpu/ganesh/SurfaceFillContext.h"
+#include "src/gpu/ganesh/effects/GrTextureEffect.h"
 #include "tests/Test.h"
 #include "tests/TestUtils.h"
 #include "tools/ToolUtils.h"
@@ -37,6 +39,7 @@ static constexpr int min_rgb_channel_bits(SkColorType ct) {
         case kR16G16_unorm_SkColorType:       return 16;
         case kR16G16_float_SkColorType:       return 16;
         case kRGBA_8888_SkColorType:          return 8;
+        case kSRGBA_8888_SkColorType:         return 8;
         case kRGB_888x_SkColorType:           return 8;
         case kBGRA_8888_SkColorType:          return 8;
         case kRGBA_1010102_SkColorType:       return 10;
@@ -48,6 +51,7 @@ static constexpr int min_rgb_channel_bits(SkColorType ct) {
         case kRGBA_F16_SkColorType:           return 10;  // just counting the mantissa
         case kRGBA_F32_SkColorType:           return 23;  // just counting the mantissa
         case kR16G16B16A16_unorm_SkColorType: return 16;
+        case kR8_unorm_SkColorType:           return 8;
     }
     SkUNREACHABLE;
 }
@@ -64,6 +68,7 @@ static constexpr int alpha_channel_bits(SkColorType ct) {
         case kR16G16_unorm_SkColorType:       return 0;
         case kR16G16_float_SkColorType:       return 0;
         case kRGBA_8888_SkColorType:          return 8;
+        case kSRGBA_8888_SkColorType:         return 8;
         case kRGB_888x_SkColorType:           return 0;
         case kBGRA_8888_SkColorType:          return 8;
         case kRGBA_1010102_SkColorType:       return 2;
@@ -75,6 +80,7 @@ static constexpr int alpha_channel_bits(SkColorType ct) {
         case kRGBA_F16_SkColorType:           return 10;  // just counting the mantissa
         case kRGBA_F32_SkColorType:           return 23;  // just counting the mantissa
         case kR16G16B16A16_unorm_SkColorType: return 16;
+        case kR8_unorm_SkColorType:           return 0;
     }
     SkUNREACHABLE;
 }
@@ -184,7 +190,7 @@ SkPixmap make_pixmap_have_valid_alpha_type(SkPixmap pm) {
     return pm;
 }
 
-SkAutoPixmapStorage make_ref_data(const SkImageInfo& info, bool forceOpaque) {
+static SkAutoPixmapStorage make_ref_data(const SkImageInfo& info, bool forceOpaque) {
     SkAutoPixmapStorage result;
     result.alloc(info);
     auto surface = SkSurface::MakeRasterDirect(make_pixmap_have_valid_alpha_type(result));
@@ -326,7 +332,7 @@ static void gpu_read_pixels_test_driver(skiatest::Reporter* reporter,
                 ERRORF(reporter,
                        "%sSrc CT: %s, Src AT: %s, Read CT: %s, Read AT: %s, Rect [%d, %d, %d, %d]"
                        ", CS conversion: %d\n"
-                       "Error at %d, %d. Diff in floats: (%f, %f, %f %f)",
+                       "Error at %d, %d. Diff in floats: (%f, %f, %f, %f)",
                        label.c_str(),
                        ToolUtils::colortype_name(srcCT), ToolUtils::alphatype_name(srcAT),
                        ToolUtils::colortype_name(readCT), ToolUtils::alphatype_name(readAT),
@@ -474,8 +480,11 @@ static void gpu_read_pixels_test_driver(skiatest::Reporter* reporter,
     }
 }
 
-DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SurfaceContextReadPixels, reporter, ctxInfo) {
-    using Surface = std::unique_ptr<GrSurfaceContext>;
+DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(SurfaceContextReadPixels,
+                                       reporter,
+                                       ctxInfo,
+                                       CtsEnforcement::kApiLevel_T) {
+    using Surface = std::unique_ptr<skgpu::v1::SurfaceContext>;
     GrDirectContext* direct = ctxInfo.directContext();
     auto reader = std::function<GpuReadSrcFn<Surface>>(
             [direct](const Surface& surface, const SkIPoint& offset, const SkPixmap& pixels) {
@@ -500,15 +509,12 @@ DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SurfaceContextReadPixels, reporter, ctxInfo) 
         for (GrSurfaceOrigin origin : {kTopLeft_GrSurfaceOrigin, kBottomLeft_GrSurfaceOrigin}) {
             auto factory = std::function<GpuSrcFactory<Surface>>(
                     [direct, origin, renderable](const SkPixmap& src) {
-                        if (src.colorType() == kRGB_888x_SkColorType) {
-                            return Surface();
-                        }
-                        auto surfContext = GrSurfaceContext::Make(
+                        auto sc = CreateSurfaceContext(
                                 direct, src.info(), SkBackingFit::kExact, origin, renderable);
-                        if (surfContext) {
-                            surfContext->writePixels(direct, src, {0, 0});
+                        if (sc) {
+                            sc->writePixels(direct, src, {0, 0});
                         }
-                        return surfContext;
+                        return sc;
                     });
             auto label = SkStringPrintf("Renderable: %d, Origin: %d", (int)renderable, origin);
             gpu_read_pixels_test_driver(reporter, rules, factory, reader, label);
@@ -516,7 +522,10 @@ DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SurfaceContextReadPixels, reporter, ctxInfo) 
     }
 }
 
-DEF_GPUTEST_FOR_ALL_CONTEXTS(ReadPixels_InvalidRowBytes_Gpu, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_ALL_CONTEXTS(ReadPixels_InvalidRowBytes_Gpu,
+                                 reporter,
+                                 ctxInfo,
+                                 CtsEnforcement::kApiLevel_T) {
     auto srcII = SkImageInfo::Make({10, 10}, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
     auto surf = SkSurface::MakeRenderTarget(ctxInfo.directContext(), SkBudgeted::kYes, srcII);
     for (int ct = 0; ct < kLastEnum_SkColorType + 1; ++ct) {
@@ -532,7 +541,10 @@ DEF_GPUTEST_FOR_ALL_CONTEXTS(ReadPixels_InvalidRowBytes_Gpu, reporter, ctxInfo) 
     }
 }
 
-DEF_GPUTEST_FOR_ALL_CONTEXTS(WritePixels_InvalidRowBytes_Gpu, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_ALL_CONTEXTS(WritePixels_InvalidRowBytes_Gpu,
+                                 reporter,
+                                 ctxInfo,
+                                 CtsEnforcement::kApiLevel_T) {
     auto dstII = SkImageInfo::Make({10, 10}, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
     auto surf = SkSurface::MakeRenderTarget(ctxInfo.directContext(), SkBudgeted::kYes, dstII);
     for (int ct = 0; ct < kLastEnum_SkColorType + 1; ++ct) {
@@ -567,7 +579,10 @@ static void async_callback(void* c, std::unique_ptr<const SkImage::AsyncReadResu
     context->fCalled = true;
 };
 
-DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SurfaceAsyncReadPixels, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(SurfaceAsyncReadPixels,
+                                       reporter,
+                                       ctxInfo,
+                                       CtsEnforcement::kApiLevel_T) {
     using Surface = sk_sp<SkSurface>;
     auto reader = std::function<GpuReadSrcFn<Surface>>(
             [](const Surface& surface, const SkIPoint& offset, const SkPixmap& pixels) {
@@ -602,9 +617,6 @@ DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SurfaceAsyncReadPixels, reporter, ctxInfo) {
     for (GrSurfaceOrigin origin : {kTopLeft_GrSurfaceOrigin, kBottomLeft_GrSurfaceOrigin}) {
         auto factory = std::function<GpuSrcFactory<Surface>>(
                 [context = ctxInfo.directContext(), origin](const SkPixmap& src) {
-                    if (src.colorType() == kRGB_888x_SkColorType) {
-                        return Surface();
-                    }
                     auto surf = SkSurface::MakeRenderTarget(context,
                                                             SkBudgeted::kYes,
                                                             src.info(),
@@ -620,28 +632,29 @@ DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SurfaceAsyncReadPixels, reporter, ctxInfo) {
         gpu_read_pixels_test_driver(reporter, rules, factory, reader, label);
         auto backendRTFactory = std::function<GpuSrcFactory<Surface>>(
                 [context = ctxInfo.directContext(), origin](const SkPixmap& src) {
-                  if (src.colorType() == kRGB_888x_SkColorType) {
-                      return Surface();
-                  }
-                  // Dawn backend implementation of backend render targets doesn't support reading.
-                  if (context->backend() == GrBackendApi::kDawn) {
-                      return Surface();
-                  }
-                  auto surf = sk_gpu_test::MakeBackendRenderTargetSurface(context,
-                                                                          src.info(),
-                                                                          origin,
-                                                                          1);
-                  if (surf) {
-                      surf->writePixels(src, 0, 0);
-                  }
-                  return surf;
+                    // Dawn backend implementation of backend render targets doesn't support
+                    // reading.
+                    if (context->backend() == GrBackendApi::kDawn) {
+                        return Surface();
+                    }
+                    auto surf = sk_gpu_test::MakeBackendRenderTargetSurface(context,
+                                                                            src.info(),
+                                                                            origin,
+                                                                            1);
+                    if (surf) {
+                        surf->writePixels(src, 0, 0);
+                    }
+                    return surf;
                 });
         label = SkStringPrintf("BERT Origin: %d", origin);
         gpu_read_pixels_test_driver(reporter, rules, backendRTFactory, reader, label);
     }
 }
 
-DEF_GPUTEST_FOR_RENDERING_CONTEXTS(ImageAsyncReadPixels, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(ImageAsyncReadPixels,
+                                       reporter,
+                                       ctxInfo,
+                                       CtsEnforcement::kApiLevel_T) {
     using Image = sk_sp<SkImage>;
     auto context = ctxInfo.directContext();
     auto reader = std::function<GpuReadSrcFn<Image>>([context](const Image& image,
@@ -682,9 +695,6 @@ DEF_GPUTEST_FOR_RENDERING_CONTEXTS(ImageAsyncReadPixels, reporter, ctxInfo) {
     for (auto origin : {kTopLeft_GrSurfaceOrigin, kBottomLeft_GrSurfaceOrigin}) {
         for (auto renderable : {GrRenderable::kNo, GrRenderable::kYes}) {
             auto factory = std::function<GpuSrcFactory<Image>>([&](const SkPixmap& src) {
-                if (src.colorType() == kRGB_888x_SkColorType) {
-                    return Image();
-                }
                 return sk_gpu_test::MakeBackendTextureImage(ctxInfo.directContext(), src,
                                                             renderable, origin);
             });
@@ -694,7 +704,7 @@ DEF_GPUTEST_FOR_RENDERING_CONTEXTS(ImageAsyncReadPixels, reporter, ctxInfo) {
     }
 }
 
-DEF_GPUTEST(AsyncReadPixelsContextShutdown, reporter, options) {
+DEF_GANESH_TEST(AsyncReadPixelsContextShutdown, reporter, options, CtsEnforcement::kApiLevel_T) {
     const auto ii = SkImageInfo::Make(10, 10, kRGBA_8888_SkColorType, kPremul_SkAlphaType,
                                       SkColorSpace::MakeSRGB());
     enum class ShutdownSequence {
@@ -717,9 +727,10 @@ DEF_GPUTEST(AsyncReadPixelsContextShutdown, reporter, options) {
                               ShutdownSequence::kAbandon_FreeResult_DestroyContext,
                               ShutdownSequence::kReleaseAndAbandon_DestroyContext_FreeResult,
                               ShutdownSequence::kAbandon_DestroyContext_FreeResult}) {
-            // Vulkan context abandoning without resource release has issues outside of the scope of
-            // this test.
-            if (type == sk_gpu_test::GrContextFactory::kVulkan_ContextType &&
+            // Vulkan and D3D context abandoning without resource release has issues outside of the
+            // scope of this test.
+            if ((type == sk_gpu_test::GrContextFactory::kVulkan_ContextType ||
+                 type == sk_gpu_test::GrContextFactory::kDirect3D_ContextType) &&
                 (sequence == ShutdownSequence::kFreeResult_ReleaseAndAbandon_DestroyContext ||
                  sequence == ShutdownSequence::kFreeResult_Abandon_DestroyContext ||
                  sequence == ShutdownSequence::kReleaseAndAbandon_FreeResult_DestroyContext ||
@@ -904,7 +915,7 @@ static void gpu_write_pixels_test_driver(skiatest::Reporter* reporter,
             ERRORF(reporter,
                    "Write CT: %s, Write AT: %s, Dst CT: %s, Dst AT: %s, Rect [%d, %d, %d, %d]"
                    ", CS conversion: %d\n"
-                   "Error at %d, %d. Diff in floats: (%f, %f, %f %f)",
+                   "Error at %d, %d. Diff in floats: (%f, %f, %f, %f)",
                    ToolUtils::colortype_name(writeCT),
                    ToolUtils::alphatype_name(writeAT),
                    ToolUtils::colortype_name(dstCT),
@@ -952,7 +963,7 @@ static void gpu_write_pixels_test_driver(skiatest::Reporter* reporter,
                             ERRORF(reporter,
                                    "Write CT: %s, Write AT: %s, Dst CT: %s, Dst AT: %s,"
                                    "Rect [%d, %d, %d, %d], CS conversion: %d\n"
-                                   "Error in guard region %d, %d. Diff in floats: (%f, %f, %f %f)",
+                                   "Error in guard region %d, %d. Diff in floats: (%f, %f, %f, %f)",
                                    ToolUtils::colortype_name(writeCT),
                                    ToolUtils::alphatype_name(writeAT),
                                    ToolUtils::colortype_name(dstCT),
@@ -1063,8 +1074,11 @@ static void gpu_write_pixels_test_driver(skiatest::Reporter* reporter,
     }
 }
 
-DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SurfaceContextWritePixels, reporter, ctxInfo) {
-    using Surface = std::unique_ptr<GrSurfaceContext>;
+DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(SurfaceContextWritePixels,
+                                       reporter,
+                                       ctxInfo,
+                                       CtsEnforcement::kApiLevel_T) {
+    using Surface = std::unique_ptr<skgpu::v1::SurfaceContext>;
     GrDirectContext* direct = ctxInfo.directContext();
     auto writer = std::function<GpuWriteDstFn<Surface>>(
             [direct](const Surface& surface, const SkIPoint& offset, const SkPixmap& pixels) {
@@ -1093,17 +1107,220 @@ DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SurfaceContextWritePixels, reporter, ctxInfo)
         for (GrSurfaceOrigin origin : {kTopLeft_GrSurfaceOrigin, kBottomLeft_GrSurfaceOrigin}) {
             auto factory = std::function<GpuDstFactory<Surface>>(
                     [direct, origin, renderable](const SkImageInfo& info) {
-                        if (info.colorType() == kRGB_888x_SkColorType) {
-                            return Surface();
-                        }
-                        return GrSurfaceContext::Make(direct,
-                                                      info,
-                                                      SkBackingFit::kExact,
-                                                      origin,
-                                                      renderable);
+                        return CreateSurfaceContext(direct,
+                                                    info,
+                                                    SkBackingFit::kExact,
+                                                    origin,
+                                                    renderable);
                     });
 
             gpu_write_pixels_test_driver(reporter, factory, writer, reader);
         }
     }
+}
+
+DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(SurfaceContextWritePixelsMipped,
+                                       reporter,
+                                       ctxInfo,
+                                       CtsEnforcement::kApiLevel_T) {
+    auto direct = ctxInfo.directContext();
+    if (!direct->priv().caps()->mipmapSupport()) {
+        return;
+    }
+    static constexpr int kW = 25,
+                         kH = 37;
+    SkAutoPixmapStorage refP = make_ref_data(SkImageInfo::Make({kW, kH},
+                                                               kRGBA_F32_SkColorType,
+                                                               kPremul_SkAlphaType,
+                                                               nullptr),
+                                             false);
+    SkAutoPixmapStorage refO = make_ref_data(SkImageInfo::Make({kW, kH},
+                                                               kRGBA_F32_SkColorType,
+                                                               kOpaque_SkAlphaType,
+                                                               nullptr),
+                                             true);
+
+    for (int c = 0; c < kGrColorTypeCnt; ++c) {
+        auto ct = static_cast<GrColorType>(c);
+        // Below we use rendering to read the level pixels back.
+        auto format = direct->priv().caps()->getDefaultBackendFormat(ct, GrRenderable::kYes);
+        if (!format.isValid()) {
+            continue;
+        }
+        SkAlphaType at = GrColorTypeHasAlpha(ct) ? kPremul_SkAlphaType : kOpaque_SkAlphaType;
+        GrImageInfo info(ct, at, nullptr, kW, kH);
+        SkTArray<GrCPixmap> levels;
+        const auto& ref = at == kPremul_SkAlphaType ? refP : refO;
+        for (int w = kW, h = kH; w || h; w/=2, h/=2) {
+            auto level = GrPixmap::Allocate(info.makeWH(std::max(w, 1), std::max(h, 1)));
+            SkPixmap src;
+            SkAssertResult(ref.extractSubset(&src, SkIRect::MakeSize(level.dimensions())));
+            SkAssertResult(GrConvertPixels(level, src));
+            levels.push_back(level);
+        }
+
+        for (bool unowned : {false, true}) { // test a GrCPixmap that doesn't own its storage.
+            for (auto renderable : {GrRenderable::kNo, GrRenderable::kYes}) {
+                for (GrSurfaceOrigin origin : {kTopLeft_GrSurfaceOrigin,
+                                               kBottomLeft_GrSurfaceOrigin}) {
+                    auto sc = CreateSurfaceContext(direct,
+                                                   info,
+                                                   SkBackingFit::kExact,
+                                                   origin,
+                                                   renderable,
+                                                   /*sample count*/ 1,
+                                                   GrMipmapped::kYes);
+                    if (!sc) {
+                        continue;
+                    }
+                    // Keeps pixels in unowned case alive until after writePixels is called but no
+                    // longer.
+                    GrPixmap keepAlive;
+                    GrCPixmap savedLevel = levels[1];
+                    if (unowned) {
+                        // Also test non-tight row bytes with the unowned pixmap, bump width by 1.
+                        int w = levels[1].width() + 1;
+                        int h = levels[1].height();
+                        keepAlive = GrPixmap::Allocate(levels[1].info().makeWH(w, h));
+                        SkPixmap src;
+                        // These pixel values will be the same as the original level 1.
+                        SkAssertResult(ref.extractSubset(&src, SkIRect::MakeWH(w, h)));
+                        SkAssertResult(GrConvertPixels(keepAlive, src));
+                        levels[1] = GrCPixmap(levels[1].info(),
+                                              keepAlive.addr(),
+                                              keepAlive.rowBytes());
+                    }
+                    // Going through intermediate textures is not supported for MIP levels (because
+                    // we don't support rendering to non-base levels). So it's hard to have any hard
+                    // rules about when we expect success.
+                    if (!sc->writePixels(direct, levels.begin(), levels.count())) {
+                        continue;
+                    }
+                    // Make sure the pixels from the unowned pixmap are released and then put the
+                    // original level back in for the comparison after the read below.
+                    keepAlive = {};
+                    levels[1] = savedLevel;
+
+                    // TODO: Update this when read pixels supports reading back levels to read
+                    // directly rather than using minimizing draws.
+                    auto dstSC = CreateSurfaceContext(direct,
+                                                      info,
+                                                      SkBackingFit::kExact,
+                                                      kBottomLeft_GrSurfaceOrigin,
+                                                      GrRenderable::kYes);
+                    SkASSERT(dstSC);
+                    GrSamplerState sampler(SkFilterMode::kNearest, SkMipmapMode::kNearest);
+                    for (int i = 1; i <= 1; ++i) {
+                        auto te = GrTextureEffect::Make(sc->readSurfaceView(),
+                                                        info.alphaType(),
+                                                        SkMatrix::I(),
+                                                        sampler,
+                                                        *direct->priv().caps());
+                        dstSC->asFillContext()->fillRectToRectWithFP(
+                                SkIRect::MakeSize(sc->dimensions()),
+                                SkIRect::MakeSize(levels[i].dimensions()),
+                                std::move(te));
+                        GrImageInfo readInfo =
+                                dstSC->imageInfo().makeDimensions(levels[i].dimensions());
+                        GrPixmap read = GrPixmap::Allocate(readInfo);
+                        if (!dstSC->readPixels(direct, read, {0, 0})) {
+                            continue;
+                        }
+
+                        auto skCT = GrColorTypeToSkColorType(info.colorType());
+                        int rgbBits = std::min(min_rgb_channel_bits(skCT), 8);
+                        float rgbTol = (rgbBits == 0) ? 1.f : 2.f / ((1 << rgbBits) - 1);
+                        int alphaBits = std::min(alpha_channel_bits(skCT), 8);
+                        float alphaTol = (alphaBits == 0) ? 1.f : 2.f / ((1 << alphaBits) - 1);
+                        float tol[] = {rgbTol, rgbTol, rgbTol, alphaTol};
+
+                        GrCPixmap a = levels[i];
+                        GrCPixmap b = read;
+                        // The compare code will linearize when reading the srgb data. This will
+                        // magnify differences at the high end. Rather than adjusting the tolerance
+                        // to compensate we do the comparison without going through srgb->linear.
+                        if (ct == GrColorType::kRGBA_8888_SRGB) {
+                            a = GrCPixmap(a.info().makeColorType(GrColorType::kRGBA_8888),
+                                          a.addr(),
+                                          a.rowBytes());
+                            b = GrCPixmap(b.info().makeColorType(GrColorType::kRGBA_8888),
+                                          b.addr(),
+                                          b.rowBytes());
+                        }
+
+                        auto error = std::function<ComparePixmapsErrorReporter>(
+                                [&](int x, int y, const float diffs[4]) {
+                                    SkASSERT(x >= 0 && y >= 0);
+                                    ERRORF(reporter,
+                                           "CT: %s, Level %d, Unowned: %d. "
+                                           "Error at %d, %d. Diff in floats:"
+                                           "(%f, %f, %f, %f)",
+                                           GrColorTypeToStr(info.colorType()), i, unowned, x, y,
+                                           diffs[0], diffs[1], diffs[2], diffs[3]);
+                                });
+                        ComparePixels(a, b, tol, error);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Tests a bug found in OOP-R canvas2d in Chrome. The GPU backend would incorrectly not bind
+// buffer 0 to GL_PIXEL_PACK_BUFFER before a glReadPixels() that was supposed to read into
+// client memory if a GrDirectContext::resetContext() occurred.
+DEF_GANESH_TEST_FOR_GL_RENDERING_CONTEXTS(GLReadPixelsUnbindPBO,
+                                          reporter,
+                                          ctxInfo,
+                                          CtsEnforcement::kApiLevel_T) {
+    // Start with a async read so that we bind to GL_PIXEL_PACK_BUFFER.
+    auto info = SkImageInfo::Make(16, 16, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
+    SkAutoPixmapStorage pmap = make_ref_data(info, /*forceOpaque=*/false);
+    auto image = SkImage::MakeFromRaster(pmap, nullptr, nullptr);
+    image = image->makeTextureImage(ctxInfo.directContext());
+    if (!image) {
+        ERRORF(reporter, "Couldn't make texture image.");
+        return;
+    }
+
+    AsyncContext asyncContext;
+    image->asyncRescaleAndReadPixels(info,
+                                     SkIRect::MakeSize(info.dimensions()),
+                                     SkImage::RescaleGamma::kSrc,
+                                     SkImage::RescaleMode::kNearest,
+                                     async_callback,
+                                     &asyncContext);
+
+    // This will force the async readback to finish.
+    ctxInfo.directContext()->flushAndSubmit(true);
+    if (!asyncContext.fCalled) {
+        ERRORF(reporter, "async_callback not called.");
+    }
+    if (!asyncContext.fResult) {
+        ERRORF(reporter, "async read failed.");
+    }
+
+    SkPixmap asyncResult(info, asyncContext.fResult->data(0), asyncContext.fResult->rowBytes(0));
+
+    // Bug was that this would cause GrGLGpu to think no buffer was left bound to
+    // GL_PIXEL_PACK_BUFFER even though async transfer did leave one bound. So the sync read
+    // wouldn't bind buffer 0.
+    ctxInfo.directContext()->resetContext();
+
+    SkBitmap syncResult;
+    syncResult.allocPixels(info);
+    syncResult.eraseARGB(0xFF, 0xFF, 0xFF, 0xFF);
+
+    image->readPixels(ctxInfo.directContext(), syncResult.pixmap(), 0, 0);
+
+    float tol[4] = {};  // expect exactly same pixels, no conversions.
+    auto error = std::function<ComparePixmapsErrorReporter>([&](int x, int y,
+                                                                const float diffs[4]) {
+      SkASSERT(x >= 0 && y >= 0);
+      ERRORF(reporter, "Expect sync and async read to be the same. "
+             "Error at %d, %d. Diff in floats: (%f, %f, %f, %f)",
+             x, y, diffs[0], diffs[1], diffs[2], diffs[3]);
+    });
+
+    ComparePixels(syncResult.pixmap(), asyncResult, tol, error);
 }

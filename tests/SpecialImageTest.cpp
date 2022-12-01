@@ -7,6 +7,7 @@
 
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkSurface.h"
@@ -15,12 +16,12 @@
 #include "src/core/SkAutoPixmapStorage.h"
 #include "src/core/SkSpecialImage.h"
 #include "src/core/SkSpecialSurface.h"
-#include "src/gpu/GrBitmapTextureMaker.h"
-#include "src/gpu/GrDirectContextPriv.h"
-#include "src/gpu/GrProxyProvider.h"
-#include "src/gpu/GrSurfaceProxy.h"
-#include "src/gpu/GrTextureProxy.h"
-#include "src/gpu/SkGr.h"
+#include "src/gpu/ganesh/GrColorInfo.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrProxyProvider.h"
+#include "src/gpu/ganesh/GrSurfaceProxy.h"
+#include "src/gpu/ganesh/GrTextureProxy.h"
+#include "src/gpu/ganesh/SkGr.h"
 #include "tests/Test.h"
 
 // This test creates backing resources exactly sized to [kFullSize x kFullSize].
@@ -88,7 +89,7 @@ static void test_image(const sk_sp<SkSpecialImage>& img, skiatest::Reporter* rep
     // Test that draw restricts itself to the subset
     sk_sp<SkSpecialSurface> surf(img->makeSurface(kN32_SkColorType, img->getColorSpace(),
                                                   SkISize::Make(kFullSize, kFullSize),
-                                                  kPremul_SkAlphaType));
+                                                  kPremul_SkAlphaType, SkSurfaceProps()));
 
     SkCanvas* canvas = surf->getCanvas();
 
@@ -141,12 +142,13 @@ DEF_TEST(SpecialImage_Raster, reporter) {
 
     sk_sp<SkSpecialImage> fullSImage(SkSpecialImage::MakeFromRaster(
                                                             SkIRect::MakeWH(kFullSize, kFullSize),
-                                                            bm));
+                                                            bm, SkSurfaceProps()));
 
     const SkIRect& subset = SkIRect::MakeXYWH(kPad, kPad, kSmallerSize, kSmallerSize);
 
     {
-        sk_sp<SkSpecialImage> subSImg1(SkSpecialImage::MakeFromRaster(subset, bm));
+        sk_sp<SkSpecialImage> subSImg1(SkSpecialImage::MakeFromRaster(subset, bm,
+                                                                      SkSurfaceProps()));
         test_image(subSImg1, reporter, nullptr, false);
     }
 
@@ -164,12 +166,14 @@ static void test_specialimage_image(skiatest::Reporter* reporter) {
     sk_sp<SkSpecialImage> fullSImage(SkSpecialImage::MakeFromImage(
                                                             nullptr,
                                                             SkIRect::MakeWH(kFullSize, kFullSize),
-                                                            fullImage));
+                                                            fullImage,
+                                                            SkSurfaceProps()));
 
     const SkIRect& subset = SkIRect::MakeXYWH(kPad, kPad, kSmallerSize, kSmallerSize);
 
     {
-        sk_sp<SkSpecialImage> subSImg1(SkSpecialImage::MakeFromImage(nullptr, subset, fullImage));
+        sk_sp<SkSpecialImage> subSImg1(SkSpecialImage::MakeFromImage(nullptr, subset, fullImage,
+                                                                     SkSurfaceProps()));
         test_image(subSImg1, reporter, nullptr, false);
     }
 
@@ -183,38 +187,40 @@ DEF_TEST(SpecialImage_Image_Legacy, reporter) {
     test_specialimage_image(reporter);
 }
 
-DEF_GPUTEST_FOR_RENDERING_CONTEXTS(SpecialImage_Gpu, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(SpecialImage_Gpu,
+                                       reporter,
+                                       ctxInfo,
+                                       CtsEnforcement::kApiLevel_T) {
     auto context = ctxInfo.directContext();
     SkBitmap bm = create_bm();
-    GrBitmapTextureMaker maker(context, bm, GrImageTexGenPolicy::kNew_Uncached_Budgeted);
-    auto view = maker.view(GrMipmapped::kNo);
-    if (!view.proxy()) {
+    auto [view, ct] = GrMakeUncachedBitmapProxyView(context, bm);
+    if (!view) {
         return;
     }
 
-    sk_sp<SkSpecialImage> fullSImg(
+    sk_sp<SkSpecialImage> fullSImg =
             SkSpecialImage::MakeDeferredFromGpu(context,
                                                 SkIRect::MakeWH(kFullSize, kFullSize),
                                                 kNeedNewImageUniqueID_SpecialImage,
                                                 view,
-                                                maker.colorType(),
-                                                nullptr));
+                                                { ct, kPremul_SkAlphaType, nullptr },
+                                                SkSurfaceProps());
 
     const SkIRect& subset = SkIRect::MakeXYWH(kPad, kPad, kSmallerSize, kSmallerSize);
 
     {
-        sk_sp<SkSpecialImage> subSImg1(SkSpecialImage::MakeDeferredFromGpu(
+        sk_sp<SkSpecialImage> subSImg1 = SkSpecialImage::MakeDeferredFromGpu(
                 context,
                 subset,
                 kNeedNewImageUniqueID_SpecialImage,
                 std::move(view),
-                maker.colorType(),
-                nullptr));
+                { ct, kPremul_SkAlphaType, nullptr },
+                SkSurfaceProps());
         test_image(subSImg1, reporter, context, true);
     }
 
     {
-        sk_sp<SkSpecialImage> subSImg2(fullSImg->makeSubset(subset));
+        sk_sp<SkSpecialImage> subSImg2 = fullSImg->makeSubset(subset);
         test_image(subSImg2, reporter, context, true);
     }
 }

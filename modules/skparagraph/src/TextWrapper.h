@@ -3,8 +3,8 @@
 #define TextWrapper_DEFINED
 
 #include <string>
+#include "include/core/SkSpan.h"
 #include "modules/skparagraph/src/TextLine.h"
-#include "src/core/SkSpan.h"
 
 namespace skia {
 namespace textlayout {
@@ -26,7 +26,7 @@ class TextWrapper {
         void move(bool up) {
             fCluster += up ? 1 : -1;
             fPos = up ? 0 : fCluster->endPos();
-}
+        }
 
     private:
         Cluster* fCluster;
@@ -81,7 +81,8 @@ class TextWrapper {
             fEnd = ClusterPos(cluster, cluster->endPos());
             // TODO: Make sure all the checks are correct and there are no unnecessary checks
             auto& r = cluster->run();
-            if (!r.isPlaceholder()) {
+            if (!cluster->isHardBreak() && !r.isPlaceholder()) {
+                // We ignore metrics for \n as the Flutter does
                 fMetrics.add(&r);
             }
             fWidth += cluster->width();
@@ -115,6 +116,10 @@ class TextWrapper {
         void restoreBreak() {
             fWidth = fWidthWithGhostSpaces;
             fEnd = fBreak;
+        }
+
+        void shiftBreak() {
+            fBreak.move(true);
         }
 
         void trim() {
@@ -162,8 +167,9 @@ public:
          fExceededMaxLines = false;
     }
 
-    using AddLineToParagraph = std::function<void(TextRange text,
-                                                  TextRange textWithSpaces,
+    using AddLineToParagraph = std::function<void(TextRange textExcludingSpaces,
+                                                  TextRange text,
+                                                  TextRange textIncludingNewlines,
                                                   ClusterRange clusters,
                                                   ClusterRange clustersWithGhosts,
                                                   SkScalar AddLineToParagraph,
@@ -204,6 +210,7 @@ private:
         fClip.clean();
         fTooLongCluster = false;
         fTooLongWord = false;
+        fHardLineBreak = false;
     }
 
     void lookAhead(SkScalar maxWidth, Cluster* endOfClusters);

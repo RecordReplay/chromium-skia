@@ -18,7 +18,9 @@
 
 #if SK_SUPPORT_GPU
 #include "include/gpu/GrDirectContext.h"
-#include "src/gpu/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+
+using MaskFormat = skgpu::MaskFormat;
 #endif
 
 static sk_sp<SkTypeface> chinese_typeface() {
@@ -38,8 +40,8 @@ static sk_sp<SkTypeface> chinese_typeface() {
 }
 
 class ChineseFlingView : public Sample {
-    static constexpr int kNumBlobs = 200;
-    static constexpr int kWordLength = 16;
+    inline static constexpr int kNumBlobs = 200;
+    inline static constexpr int kWordLength = 16;
 
     sk_sp<SkTypeface>    fTypeface;
     SkFontMetrics        fMetrics;
@@ -103,8 +105,8 @@ class ChineseFlingView : public Sample {
 };
 
 class ChineseZoomView : public Sample {
-    static constexpr int kNumBlobs = 8;
-    static constexpr int kParagraphLength = 175;
+    inline static constexpr int kNumBlobs = 8;
+    inline static constexpr int kParagraphLength = 175;
 
     bool                 fAfterFirstFrame = false;
     sk_sp<SkTypeface>    fTypeface;
@@ -139,23 +141,20 @@ class ChineseZoomView : public Sample {
 #if SK_SUPPORT_GPU
             auto direct = GrAsDirectContext(canvas->recordingContext());
             if (direct) {
-                sk_sp<SkImage> image = direct->priv().testingOnly_getFontAtlasImage(
-                            GrMaskFormat::kA8_GrMaskFormat, 0);
+                sk_sp<SkImage> image = direct->priv().testingOnly_getFontAtlasImage(MaskFormat::kA8,
+                                                                                    0);
                 canvas->drawImageRect(image,
                                       SkRect::MakeXYWH(10.0f, 10.0f, 512.0f, 512.0),
                                       SkSamplingOptions(), &paint);
-                image = direct->priv().testingOnly_getFontAtlasImage(
-                        GrMaskFormat::kA8_GrMaskFormat, 1);
+                image = direct->priv().testingOnly_getFontAtlasImage(MaskFormat::kA8, 1);
                 canvas->drawImageRect(image,
                                       SkRect::MakeXYWH(522.0f, 10.0f, 512.f, 512.0f),
                                       SkSamplingOptions(), &paint);
-                image = direct->priv().testingOnly_getFontAtlasImage(
-                        GrMaskFormat::kA8_GrMaskFormat, 2);
+                image = direct->priv().testingOnly_getFontAtlasImage(MaskFormat::kA8, 2);
                 canvas->drawImageRect(image,
                                       SkRect::MakeXYWH(10.0f, 522.0f, 512.0f, 512.0f),
                                       SkSamplingOptions(), &paint);
-                image = direct->priv().testingOnly_getFontAtlasImage(
-                        GrMaskFormat::kA8_GrMaskFormat, 3);
+                image = direct->priv().testingOnly_getFontAtlasImage(MaskFormat::kA8, 3);
                 canvas->drawImageRect(image,
                                       SkRect::MakeXYWH(522.0f, 522.0f, 512.0f, 512.0f),
                                       SkSamplingOptions(), &paint);

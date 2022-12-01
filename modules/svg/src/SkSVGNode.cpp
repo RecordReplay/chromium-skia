@@ -63,9 +63,13 @@ bool SkSVGNode::onPrepareToRender(SkSVGRenderContext* ctx) const {
     ctx->applyPresentationAttributes(fPresentationAttributes,
                                      this->hasChildren() ? 0 : SkSVGRenderContext::kLeaf);
 
-    // visibility:hidden disables rendering
+    // visibility:hidden and display:none disable rendering.
+    // TODO: if display is not a value (true when display="inherit"), we currently
+    //   ignore it. Eventually we should be able to add SkASSERT(display.isValue()).
     const auto visibility = ctx->presentationContext().fInherited.fVisibility->type();
-    return visibility != SkSVGVisibility::Type::kHidden;
+    const auto display = fPresentationAttributes.fDisplay;  // display is uninherited
+    return visibility != SkSVGVisibility::Type::kHidden &&
+           (!display.isValue() || *display != SkSVGDisplay::kNone);
 }
 
 void SkSVGNode::setAttribute(SkSVGAttribute attr, const SkSVGValue& v) {
@@ -94,6 +98,7 @@ bool SkSVGNode::parseAndSetAttribute(const char* n, const char* v) {
            || PARSE_AND_SET("color"                      , Color)
            || PARSE_AND_SET("color-interpolation"        , ColorInterpolation)
            || PARSE_AND_SET("color-interpolation-filters", ColorInterpolationFilters)
+           || PARSE_AND_SET("display"                    , Display)
            || PARSE_AND_SET("fill"                       , Fill)
            || PARSE_AND_SET("fill-opacity"               , FillOpacity)
            || PARSE_AND_SET("fill-rule"                  , FillRule)
@@ -127,8 +132,9 @@ bool SkSVGNode::parseAndSetAttribute(const char* n, const char* v) {
 SkMatrix SkSVGNode::ComputeViewboxMatrix(const SkRect& viewBox,
                                          const SkRect& viewPort,
                                          SkSVGPreserveAspectRatio par) {
-    SkASSERT(!viewBox.isEmpty());
-    SkASSERT(!viewPort.isEmpty());
+    if (viewBox.isEmpty() || viewPort.isEmpty()) {
+        return SkMatrix::Scale(0, 0);
+    }
 
     auto compute_scale = [&]() -> SkV2 {
         const auto sx = viewPort.width()  / viewBox.width(),
@@ -156,8 +162,8 @@ SkMatrix SkSVGNode::ComputeViewboxMatrix(const SkRect& viewBox,
         const size_t x_coeff = par.fAlign >> 0 & 0x03,
                      y_coeff = par.fAlign >> 2 & 0x03;
 
-        SkASSERT(x_coeff < SK_ARRAY_COUNT(gAlignCoeffs) &&
-                 y_coeff < SK_ARRAY_COUNT(gAlignCoeffs));
+        SkASSERT(x_coeff < std::size(gAlignCoeffs) &&
+                 y_coeff < std::size(gAlignCoeffs));
 
         const auto tx = -viewBox.x() * scale.x,
                    ty = -viewBox.y() * scale.y,

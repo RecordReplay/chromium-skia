@@ -14,6 +14,7 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkSize.h"
 #include "include/core/SkTypes.h"
+#include "src/core/SkOpts.h"
 #include "tests/Test.h"
 #include "tools/ToolUtils.h"
 
@@ -64,11 +65,10 @@ static const Pair gPairs[] = {
     { kRGBA_F16_SkColorType,    "0101011"  },
 };
 
-static const int W = 20;
-static const int H = 33;
-
 static void setup_src_bitmaps(SkBitmap* srcOpaque, SkBitmap* srcPremul,
                               SkColorType ct) {
+    const int W = 20;
+    const int H = 33;
     sk_sp<SkColorSpace> colorSpace = nullptr;
     if (kRGBA_F16_SkColorType == ct) {
         colorSpace = SkColorSpace::MakeSRGB();
@@ -81,7 +81,8 @@ static void setup_src_bitmaps(SkBitmap* srcOpaque, SkBitmap* srcPremul,
 }
 
 DEF_TEST(BitmapCopy_extractSubset, reporter) {
-    for (size_t i = 0; i < SK_ARRAY_COUNT(gPairs); i++) {
+    const int W = 20;
+    for (size_t i = 0; i < std::size(gPairs); i++) {
         SkBitmap srcOpaque, srcPremul;
         setup_src_bitmaps(&srcOpaque, &srcPremul, gPairs[i].fColorType);
 
@@ -98,7 +99,7 @@ DEF_TEST(BitmapCopy_extractSubset, reporter) {
             REPORTER_ASSERT(reporter, subset.alphaType() == bitmap.alphaType());
 
             // Test copying an extracted subset.
-            for (size_t j = 0; j < SK_ARRAY_COUNT(gPairs); j++) {
+            for (size_t j = 0; j < std::size(gPairs); j++) {
                 SkBitmap copy;
                 bool     success = ToolUtils::copy_to(&copy, gPairs[j].fColorType, subset);
                 if (!success) {
@@ -185,7 +186,7 @@ DEF_TEST(BitmapReadPixels, reporter) {
         { false, {-1,-1 }, { 1, 1 }, { 0, 0 }, { 0, 0, 0, 0 } },
     };
 
-    for (size_t i = 0; i < SK_ARRAY_COUNT(gRec); ++i) {
+    for (size_t i = 0; i < std::size(gRec); ++i) {
         clear_4x4_pixels(dstPixels);
 
         dstInfo = dstInfo.makeDimensions(gRec[i].fRequestedDstSize);

@@ -7,8 +7,13 @@
 
 #include "src/utils/SkMultiPictureDocument.h"
 
+#include "include/core/SkCanvas.h"
+#include "include/core/SkData.h"
+#include "include/core/SkDocument.h"
 #include "include/core/SkPicture.h"
 #include "include/core/SkPictureRecorder.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkScalar.h"
 #include "include/core/SkSerialProcs.h"
 #include "include/core/SkStream.h"
 #include "include/private/SkTArray.h"
@@ -16,8 +21,12 @@
 #include "include/utils/SkNWayCanvas.h"
 #include "src/utils/SkMultiPictureDocumentPriv.h"
 
-#include <limits.h>
+#include <algorithm>
+#include <climits>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <string>
 
 /*
   File format:
@@ -199,6 +208,9 @@ bool SkMultiPictureDocumentRead(SkStreamSeekable* stream,
     }
 
     auto picture = SkPicture::MakeFromStream(stream, procs);
+    if (!picture) {
+        return false;
+    }
 
     PagerCanvas canvas(joined.toCeil(), dstArray, dstArrayCount);
     // Must call playback(), not drawPicture() to reach

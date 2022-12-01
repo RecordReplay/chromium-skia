@@ -8,7 +8,6 @@
 #include "gm/gm.h"
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
-#include "include/core/SkFilterQuality.h"
 #include "include/core/SkMatrix.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkRect.h"
@@ -72,7 +71,7 @@ class FilterIndiaBoxGM : public skiagm::GM {
 
     void onDraw(SkCanvas* canvas) override {
         canvas->translate(10, 10);
-        for (size_t i = 0; i < SK_ARRAY_COUNT(fMatrix); ++i) {
+        for (size_t i = 0; i < std::size(fMatrix); ++i) {
             SkSize size = computeSize(fBM, fMatrix[i]);
             size.fWidth += 20;
             size.fHeight += 20;

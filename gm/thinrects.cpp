@@ -8,11 +8,13 @@
 #include "gm/gm.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
+#include "include/core/SkImage.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkSize.h"
 #include "include/core/SkString.h"
+#include "include/core/SkSurface.h"
 #include "include/core/SkTypes.h"
 
 namespace skiagm {
@@ -86,7 +88,7 @@ private:
         static constexpr SkVector radii[4] = {{1/32.f, 2/32.f}, {3/32.f, 1/32.f}, {2/32.f, 3/32.f},
                                               {1/32.f, 3/32.f}};
         SkRRect rrect;
-        for (size_t j = 0; j < SK_ARRAY_COUNT(vertRects); ++j) {
+        for (size_t j = 0; j < std::size(vertRects); ++j) {
             if (fRound) {
                 rrect.setRectRadii(vertRects[j], radii);
                 canvas->drawRRect(rrect, p);
@@ -108,7 +110,7 @@ private:
         };
 
         SkRRect rrect;
-        for (size_t j = 0; j < SK_ARRAY_COUNT(horizRects); ++j) {
+        for (size_t j = 0; j < std::size(horizRects); ++j) {
             if (fRound) {
                 rrect.setNinePatch(horizRects[j], 1/32.f, 2/32.f, 3/32.f, 4/32.f);
                 canvas->drawRRect(rrect, p);
@@ -130,7 +132,7 @@ private:
         };
 
         SkRRect rrect;
-        for (size_t j = 0; j < SK_ARRAY_COUNT(squares); ++j) {
+        for (size_t j = 0; j < std::size(squares); ++j) {
             if (fRound) {
                 rrect.setRectXY(squares[j], 1/32.f, 2/32.f);
                 canvas->drawRRect(rrect, p);
@@ -151,3 +153,27 @@ DEF_GM( return new ThinRectsGM(false); )
 DEF_GM( return new ThinRectsGM(true); )
 
 }  // namespace skiagm
+
+DEF_SIMPLE_GM_CAN_FAIL(clipped_thinrect, canvas, errorMsg, 256, 256) {
+    auto zoomed = canvas->makeSurface(canvas->imageInfo().makeWH(10, 10));
+    if (!zoomed) {
+        errorMsg->printf("makeSurface not supported");
+        return skiagm::DrawResult::kSkip;
+    }
+    auto zoomedCanvas = zoomed->getCanvas();
+
+    SkPaint p;
+    p.setColor(SK_ColorRED);
+    p.setAntiAlias(true);
+    p.setStyle(SkPaint::kFill_Style);
+    zoomedCanvas->save();
+    zoomedCanvas->clipRect(SkRect::MakeXYWH(0, 5, 256, 10), true /*doAntialias*/);
+    zoomedCanvas->drawRect(SkRect::MakeXYWH(0, 0, 100, 5.5), p);
+    zoomedCanvas->restore();
+
+    // Zoom-in. Should see one line of red representing zoomed in 1/2px coverage and *not*
+    // two lines of varying coverage from hairline rendering.
+    auto img = zoomed->makeImageSnapshot();
+    canvas->drawImageRect(img, SkRect::MakeXYWH(0, 10, 200, 200), SkSamplingOptions());
+    return skiagm::DrawResult::kOk;
+}

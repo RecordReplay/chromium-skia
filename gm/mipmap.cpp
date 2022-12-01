@@ -9,7 +9,6 @@
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColorSpace.h"
-#include "include/core/SkFilterQuality.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkPaint.h"
@@ -53,7 +52,7 @@ DEF_SIMPLE_GM(mipmap, canvas, 400, 200) {
     };
 
     canvas->translate(20, 20);
-    for (size_t i = 0; i < SK_ARRAY_COUNT(samplings); ++i) {
+    for (size_t i = 0; i < std::size(samplings); ++i) {
         canvas->drawImageRect(img.get(), dst, samplings[i], nullptr);
         canvas->translate(0, 20);
     }

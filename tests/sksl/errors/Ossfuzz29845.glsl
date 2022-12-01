@@ -1,4 +1,9 @@
 ### Compilation failed:
 
 error: 2: no type named 'l'
-1 error
+    l();
+    ^
+error: 2: expected a type, but found '('
+    l();
+     ^
+2 errors

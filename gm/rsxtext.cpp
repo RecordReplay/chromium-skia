@@ -37,7 +37,7 @@ private:
         SkGlyphID glyphs[16];
         float     widths[16];
         const auto glyph_count = font.textToGlyphs(txt, strlen(txt), SkTextEncoding::kUTF8,
-                                                   glyphs, SK_ARRAY_COUNT(glyphs));
+                                                   glyphs, std::size(glyphs));
         font.getWidths(glyphs, glyph_count, widths);
 
         SkTextBlobBuilder builder;
@@ -100,9 +100,9 @@ private:
                 ->makeWithLocalMatrix(outer_lm);
     }
 
-    static constexpr float kSZ     = 300,
-                           kFontSZ = kSZ * 0.38,
-                           kScale  = 1.4f;
+    inline static constexpr float kSZ     = 300,
+                                  kFontSZ = kSZ * 0.38,
+                                  kScale  = 1.4f;
 
     sk_sp<SkTextBlob> fBlob;
 };

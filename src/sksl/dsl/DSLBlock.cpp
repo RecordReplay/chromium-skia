@@ -8,17 +8,36 @@
 #include "include/sksl/DSLBlock.h"
 
 #include "include/sksl/DSLStatement.h"
+#include "include/sksl/SkSLPosition.h"
 #include "src/sksl/ir/SkSLBlock.h"
+
+#include <utility>
 
 namespace SkSL {
 
 namespace dsl {
 
-DSLBlock::DSLBlock(SkSL::StatementArray statements)
-    : fStatements(std::move(statements)) {}
+DSLBlock::DSLBlock(SkSL::StatementArray statements,
+                   std::shared_ptr<SymbolTable> symbols,
+                   Position pos)
+        : fStatements(std::move(statements))
+        , fSymbols(std::move(symbols))
+        , fPosition(pos) {}
 
-std::unique_ptr<SkSL::Statement> DSLBlock::release() {
-    return std::make_unique<SkSL::Block>(/*offset=*/-1, std::move(fStatements));
+DSLBlock::DSLBlock(SkTArray<DSLStatement> statements,
+                   std::shared_ptr<SymbolTable> symbols,
+                   Position pos)
+        : fSymbols(std::move(symbols))
+        , fPosition(pos) {
+    fStatements.reserve_back(statements.count());
+    for (DSLStatement& s : statements) {
+        fStatements.push_back(s.release());
+    }
+}
+
+std::unique_ptr<SkSL::Block> DSLBlock::release() {
+    return std::make_unique<SkSL::Block>(fPosition, std::move(fStatements),
+                                         Block::Kind::kBracedScope, std::move(fSymbols));
 }
 
 void DSLBlock::append(DSLStatement stmt) {

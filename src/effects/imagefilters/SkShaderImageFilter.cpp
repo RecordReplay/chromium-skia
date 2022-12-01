@@ -6,13 +6,24 @@
  */
 
 #include "include/core/SkCanvas.h"
+#include "include/core/SkFlattenable.h"
+#include "include/core/SkImageFilter.h"
+#include "include/core/SkMatrix.h"
 #include "include/core/SkPaint.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkShader.h"
+#include "include/core/SkTypes.h"
 #include "include/effects/SkImageFilters.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkSpecialImage.h"
 #include "src/core/SkSpecialSurface.h"
 #include "src/core/SkWriteBuffer.h"
+
+#include <utility>
 
 namespace {
 
@@ -26,8 +37,6 @@ public:
         return sk_sp<SkImageFilter>(new SkShaderImageFilter(paint, rect));
     }
 
-    bool affectsTransparentBlack() const override;
-
 protected:
     void flatten(SkWriteBuffer&) const override;
     sk_sp<SkSpecialImage> onFilterImage(const Context&, SkIPoint* offset) const override;
@@ -35,6 +44,8 @@ protected:
 private:
     friend void ::SkRegisterShaderImageFilterFlattenable();
     SK_FLATTENABLE_HOOKS(SkShaderImageFilter)
+
+    bool onAffectsTransparentBlack() const override { return true; }
 
     // This filter only applies the shader and dithering policy of the paint.
     SkPaint fPaint;
@@ -66,9 +77,7 @@ void SkRegisterShaderImageFilterFlattenable() {
 
 sk_sp<SkFlattenable> SkShaderImageFilter::CreateProc(SkReadBuffer& buffer) {
     SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 0);
-    SkPaint paint;
-    buffer.readPaint(&paint, nullptr);
-    return SkShaderImageFilter::Make(paint, common.cropRect());
+    return SkShaderImageFilter::Make(buffer.readPaint(), common.cropRect());
 }
 
 void SkShaderImageFilter::flatten(SkWriteBuffer& buffer) const {
@@ -112,8 +121,4 @@ sk_sp<SkSpecialImage> SkShaderImageFilter::onFilterImage(const Context& ctx,
     offset->fX = bounds.fLeft;
     offset->fY = bounds.fTop;
     return surf->makeImageSnapshot();
-}
-
-bool SkShaderImageFilter::affectsTransparentBlack() const {
-    return true;
 }

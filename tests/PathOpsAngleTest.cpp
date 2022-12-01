@@ -173,7 +173,7 @@ DEF_TEST(PathOpsAngleFindSlop, reporter) {
     if (gDisableAngleTests) {
         return;
     }
-    for (int index = 0; index < (int) SK_ARRAY_COUNT(slopTests); ++index) {
+    for (int index = 0; index < (int) std::size(slopTests); ++index) {
         const double* slopTest = slopTests[index];
         double x = slopTest[0];
         double y = slopTest[1];
@@ -235,7 +235,7 @@ static CircleData circleDataSet[] = {
             {320.05078125, 227.58743286132812}}}, 3, {} },
 };
 
-static const int circleDataSetSize = (int) SK_ARRAY_COUNT(circleDataSet);
+static const int circleDataSetSize = (int) std::size(circleDataSet);
 
 DEF_TEST(PathOpsAngleCircle, reporter) {
     SkSTArenaAlloc<4096> allocator;
@@ -414,7 +414,7 @@ static IntersectData* intersectDataSets[] = {
 };
 
 #undef I
-#define I(x) (int) SK_ARRAY_COUNT(intersectDataSet##x)
+#define I(x) (int) std::size(intersectDataSet##x)
 
 static const int intersectDataSetSizes[] = {
     I(1), I(2), I(3), I(4), I(5), I(6), I(7), I(8), I(9), I(10),
@@ -423,7 +423,7 @@ static const int intersectDataSetSizes[] = {
 
 #undef I
 
-static const int intersectDataSetsSize = (int) SK_ARRAY_COUNT(intersectDataSetSizes);
+static const int intersectDataSetsSize = (int) std::size(intersectDataSetSizes);
 
 struct FourPoints {
     SkPoint pts[4];
@@ -475,30 +475,6 @@ DEF_TEST(PathOpsAngleAfter, reporter) {
     }
 }
 
-void SkOpSegment::debugAddAngle(double startT, double endT) {
-    SkOpPtT* startPtT = startT == 0 ? fHead.ptT() : startT == 1 ? fTail.ptT()
-            : this->addT(startT);
-    SkOpPtT* endPtT = endT == 0 ? fHead.ptT() : endT == 1 ? fTail.ptT()
-            : this->addT(endT);
-    SkOpAngle* angle = this->globalState()->allocator()->make<SkOpAngle>();
-    SkOpSpanBase* startSpan = &fHead;
-    while (startSpan->ptT() != startPtT) {
-        startSpan = startSpan->upCast()->next();
-    }
-    SkOpSpanBase* endSpan = &fHead;
-    while (endSpan->ptT() != endPtT) {
-        endSpan = endSpan->upCast()->next();
-    }
-    angle->set(startSpan, endSpan);
-    if (startT < endT) {
-        startSpan->upCast()->setToAngle(angle);
-        endSpan->setFromAngle(angle);
-    } else {
-        endSpan->upCast()->setToAngle(angle);
-        startSpan->setFromAngle(angle);
-    }
-}
-
 DEF_TEST(PathOpsAngleAllOnOneSide, reporter) {
     SkSTArenaAlloc<4096> allocator;
     SkOpContourHead contour;
@@ -521,6 +497,5 @@ DEF_TEST(PathOpsAngleAllOnOneSide, reporter) {
         /* int result = */
             PathOpsAngleTester::AllOnOneSide(*first->debugLastAngle(), *next->debugLastAngle());
   //      SkDebugf("i=%d result=%d\n", i , result);
-  //      SkDebugf("");
     }
 }

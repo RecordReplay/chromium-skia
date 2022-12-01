@@ -9,7 +9,6 @@
 #include "include/core/SkFont.h"
 #include "include/core/SkPath.h"
 #include "samplecode/Sample.h"
-#include "src/core/SkClipOpPriv.h"
 
 class ComplexClipView : public Sample {
     void onOnceBeforeDraw() override {
@@ -78,8 +77,8 @@ class ComplexClipView : public Sample {
             SkClipOp    fOp;
             const char* fName;
         } gOps[] = { //extra spaces in names for measureText
-            {kIntersect_SkClipOp,         "Isect "},
-            {kDifference_SkClipOp,        "Diff " },
+            {SkClipOp::kIntersect,         "Isect "},
+            {SkClipOp::kDifference,        "Diff " },
         };
 
         canvas->translate(0, SkIntToScalar(40));
@@ -87,8 +86,8 @@ class ComplexClipView : public Sample {
         canvas->save();
 
         for (int invA = 0; invA < 2; ++invA) {
-            for (size_t op = 0; op < SK_ARRAY_COUNT(gOps); ++op) {
-                size_t idx = invA * SK_ARRAY_COUNT(gOps) + op;
+            for (size_t op = 0; op < std::size(gOps); ++op) {
+                size_t idx = invA * std::size(gOps) + op;
                 if (!(idx % 3)) {
                     canvas->restore();
                     canvas->translate(0, SkIntToScalar(250));

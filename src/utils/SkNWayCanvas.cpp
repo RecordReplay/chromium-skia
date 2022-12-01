@@ -5,9 +5,42 @@
  * found in the LICENSE file.
  */
 
-#include "include/core/SkShader.h"
 #include "include/utils/SkNWayCanvas.h"
+
+#include "include/core/SkBlendMode.h"
+#include "include/core/SkCanvas.h"
+#include "include/core/SkClipOp.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkM44.h"
+#include "include/core/SkMatrix.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkSamplingOptions.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkShader.h"
+#include "include/core/SkTypes.h"
+#include "include/private/SkTDArray.h"
+#include "include/utils/SkNoDrawCanvas.h"
 #include "src/core/SkCanvasPriv.h"
+
+#include <utility>
+
+namespace sktext {
+class GlyphRunList;
+}
+
+class SkData;
+class SkDrawable;
+class SkImage;
+class SkPaint;
+class SkPath;
+class SkPicture;
+class SkRRect;
+class SkRegion;
+class SkTextBlob;
+class SkVertices;
+struct SkDrawShadowRec;
 
 SkNWayCanvas::SkNWayCanvas(int width, int height) : INHERITED(width, height) {}
 
@@ -16,6 +49,12 @@ SkNWayCanvas::~SkNWayCanvas() {
 }
 
 void SkNWayCanvas::addCanvas(SkCanvas* canvas) {
+    if (!fList.empty()) {
+        // We are using the nway canvas as a wrapper for the originally added canvas, and the device
+        // on the nway may contradict calls for the device on this canvas. So, to add a second
+        // canvas, the devices on the first canvas, and the nway base device must be different.
+        SkASSERT(fList[0]->baseDevice() != this->baseDevice());
+    }
     if (canvas) {
         *fList.append() = canvas;
     }
@@ -41,7 +80,7 @@ public:
         fIndex = 0;
     }
     bool next() {
-        if (fIndex < fList.count()) {
+        if (fIndex < fList.size()) {
             fCanvas = fList[fIndex++];
             return true;
         }
@@ -91,14 +130,6 @@ void SkNWayCanvas::willRestore() {
         iter->restore();
     }
     this->INHERITED::willRestore();
-}
-
-void SkNWayCanvas::onMarkCTM(const char* name) {
-    Iter iter(fList);
-    while (iter.next()) {
-        iter->markCTM(name);
-    }
-    this->INHERITED::onMarkCTM(name);
 }
 
 void SkNWayCanvas::didConcat44(const SkM44& m) {
@@ -167,6 +198,14 @@ void SkNWayCanvas::onClipRegion(const SkRegion& deviceRgn, SkClipOp op) {
         iter->clipRegion(deviceRgn, op);
     }
     this->INHERITED::onClipRegion(deviceRgn, op);
+}
+
+void SkNWayCanvas::onResetClip() {
+    Iter iter(fList);
+    while (iter.next()) {
+        SkCanvasPriv::ResetClip(iter.get());
+    }
+    this->INHERITED::onResetClip();
 }
 
 void SkNWayCanvas::onDrawPaint(const SkPaint& paint) {
@@ -277,6 +316,14 @@ void SkNWayCanvas::onDrawAtlas2(const SkImage* image, const SkRSXform xform[], c
     }
 }
 
+void SkNWayCanvas::onDrawGlyphRunList(const sktext::GlyphRunList& list,
+                                      const SkPaint &paint) {
+    Iter iter(fList);
+    while (iter.next()) {
+        iter->onDrawGlyphRunList(list, paint);
+    }
+}
+
 void SkNWayCanvas::onDrawTextBlob(const SkTextBlob* blob, SkScalar x, SkScalar y,
                                   const SkPaint &paint) {
     Iter iter(fList);
@@ -284,6 +331,15 @@ void SkNWayCanvas::onDrawTextBlob(const SkTextBlob* blob, SkScalar x, SkScalar y
         iter->drawTextBlob(blob, x, y, paint);
     }
 }
+
+#if SK_SUPPORT_GPU
+void SkNWayCanvas::onDrawSlug(const sktext::gpu::Slug* slug) {
+    Iter iter(fList);
+    while (iter.next()) {
+        iter->drawSlug(slug);
+    }
+}
+#endif
 
 void SkNWayCanvas::onDrawPicture(const SkPicture* picture, const SkMatrix* matrix,
                                  const SkPaint* paint) {

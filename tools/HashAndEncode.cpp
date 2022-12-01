@@ -1,10 +1,14 @@
 // Copyright 2019 Google LLC.
 // Use of this source code is governed by a BSD-style license that can be found in the LICENSE file.
 
+#include "tools/HashAndEncode.h"
+
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkICC.h"
 #include "include/core/SkString.h"
-#include "tools/HashAndEncode.h"
-#include "png.h"
+#include "modules/skcms/skcms.h"
+
+#include <png.h>
 
 static sk_sp<SkColorSpace> rec2020() {
     return SkColorSpace::MakeRGB(SkNamedTransferFn::kRec2020, SkNamedGamut::kRec2020);
@@ -29,9 +33,12 @@ HashAndEncode::HashAndEncode(const SkBitmap& bitmap) : fSize(bitmap.info().dimen
         case kARGB_4444_SkColorType:          srcFmt = skcms_PixelFormat_ABGR_4444;       break;
         case kRGBA_8888_SkColorType:          srcFmt = skcms_PixelFormat_RGBA_8888;       break;
         case kBGRA_8888_SkColorType:          srcFmt = skcms_PixelFormat_BGRA_8888;       break;
+        case kSRGBA_8888_SkColorType:         srcFmt = skcms_PixelFormat_RGBA_8888_sRGB;  break;
         case kRGBA_1010102_SkColorType:       srcFmt = skcms_PixelFormat_RGBA_1010102;    break;
         case kBGRA_1010102_SkColorType:       srcFmt = skcms_PixelFormat_BGRA_1010102;    break;
         case kGray_8_SkColorType:             srcFmt = skcms_PixelFormat_G_8;             break;
+        // skcms doesn't have R_8. Pretend it's G_8, but see below for color space trickery:
+        case kR8_unorm_SkColorType:           srcFmt = skcms_PixelFormat_G_8;             break;
         case kRGBA_F16Norm_SkColorType:       srcFmt = skcms_PixelFormat_RGBA_hhhh;       break;
         case kRGBA_F16_SkColorType:           srcFmt = skcms_PixelFormat_RGBA_hhhh;       break;
         case kRGBA_F32_SkColorType:           srcFmt = skcms_PixelFormat_RGBA_ffff;       break;
@@ -54,6 +61,14 @@ HashAndEncode::HashAndEncode(const SkBitmap& bitmap) : fSize(bitmap.info().dimen
     skcms_ICCProfile srcProfile = *skcms_sRGB_profile();
     if (auto cs = bitmap.colorSpace()) {
         cs->toProfile(&srcProfile);
+    }
+
+    // NOTE: If the color type is R8, we told skcms it's actually G8 above. To get red PNGs,
+    // we tweak the source color space to throw away any green and blue:
+    if (bitmap.colorType() == kR8_unorm_SkColorType) {
+        srcProfile.toXYZD50.vals[0][1] = srcProfile.toXYZD50.vals[0][2] = 0;
+        srcProfile.toXYZD50.vals[1][1] = srcProfile.toXYZD50.vals[1][2] = 0;
+        srcProfile.toXYZD50.vals[2][1] = srcProfile.toXYZD50.vals[2][2] = 0;
     }
 
     // Our common format that can represent anything we draw and encode as a PNG:
@@ -128,11 +143,11 @@ bool HashAndEncode::encodePNG(SkWStream* st,
 
     SkString description;
     description.append("Key: ");
-    for (int i = 0; i < key.count(); i++) {
+    for (int i = 0; i < key.size(); i++) {
         description.appendf("%s ", key[i]);
     }
     description.append("Properties: ");
-    for (int i = 0; i < properties.count(); i++) {
+    for (int i = 0; i < properties.size(); i++) {
         description.appendf("%s ", properties[i]);
     }
     description.appendf("MD5: %s", md5);
@@ -144,7 +159,7 @@ bool HashAndEncode::encodePNG(SkWStream* st,
     text[1].key  = (png_charp)"Description";
     text[1].text = (png_charp)description.c_str();
     text[1].compression = PNG_TEXT_COMPRESSION_NONE;
-    png_set_text(png, info, text, SK_ARRAY_COUNT(text));
+    png_set_text(png, info, text, std::size(text));
 
     png_set_IHDR(png, info, (png_uint_32)fSize.width()
                           , (png_uint_32)fSize.height()

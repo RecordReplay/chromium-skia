@@ -1,7 +1,7 @@
 // Adds compile-time JS functions to augment the CanvasKit interface.
 // Implementations in this file are considerate of GPU builds, i.e. some
 // behavior is predicated on whether or not this is being compiled alongside
-// gpu.js.
+// webgl.js or webgpu.js.
 (function(CanvasKit){
   CanvasKit._extraInitializations = CanvasKit._extraInitializations || [];
   CanvasKit._extraInitializations.push(function() {
@@ -73,6 +73,7 @@
     // For GPU builds, simply proxies to native code flush.  For CPU builds,
     // also updates the underlying HTML canvas, optionally with dirtyRect.
     CanvasKit.Surface.prototype.flush = function(dirtyRect) {
+      CanvasKit.setCurrentContext(this._context);
       this._flush();
       // Do we have an HTML canvas to write the pixels to?
       // We will not have a canvas if this a GPU build, for example.
@@ -100,12 +101,13 @@
       this.delete();
     };
 
-    CanvasKit.currentContext = CanvasKit.currentContext || function() {
-      // no op if this is a cpu-only build.
-    };
-
     CanvasKit.setCurrentContext = CanvasKit.setCurrentContext || function() {
        // no op if this is a cpu-only build.
+    };
+
+    CanvasKit.getCurrentGrDirectContext = CanvasKit.getCurrentGrDirectContext || function() {
+      // No GrDirectContexts without a GPU backend.
+      return null;
     };
   });
 }(Module)); // When this file is loaded in, the high level object is "Module";

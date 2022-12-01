@@ -6,21 +6,32 @@
  */
 
 #include "bench/Benchmark.h"
+#include "include/core/SkCanvas.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkFont.h"
 #include "include/core/SkTypeface.h"
 #include "include/gpu/GrDirectContext.h"
 #include "include/gpu/GrRecordingContext.h"
+#include "src/core/SkStrikeCache.h"
 #include "src/core/SkUtils.h"
-#include "src/gpu/GrRecordingContextPriv.h"
-#include "src/gpu/GrSurfaceDrawContext.h"
-#include "src/gpu/SkGr.h"
-#include "src/gpu/text/GrTextBlob.h"
+#include "src/gpu/ganesh/GrRecordingContextPriv.h"
+#include "src/gpu/ganesh/SkGr.h"
+#include "src/text/gpu/StrikeCache.h"
+#include "src/text/gpu/TextBlob.h"
+#include "src/utils/SkTestCanvas.h"
 #include "src/utils/SkUTF.h"
-
 
 // From Project Guttenberg. This is UTF-8 text.
 static const char* gText =
         "Call me Ishmael.  Some years ago--never mind how long precisely";
+
+class FillBench {};
+template <> class SkTestCanvas<FillBench> {
+public:
+    static SkBaseDevice* GetDevice(SkCanvas* canvas) {
+        return canvas->topDevice();
+    }
+};
 
 class DirectMaskGlyphVertexFillBenchmark : public Benchmark {
     bool isSuitableFor(Backend backend) override {
@@ -37,32 +48,28 @@ class DirectMaskGlyphVertexFillBenchmark : public Benchmark {
 
         SkMatrix view = SkMatrix::I();
         size_t len = strlen(gText);
-        SkGlyphRunBuilder builder;
+        sktext::GlyphRunBuilder builder;
         SkPaint paint;
-        builder.drawTextUTF8(font, gText, len, {100, 100});
-        auto glyphRunList = builder.useGlyphRunList();
+        auto glyphRunList = builder.textToGlyphRunList(font, paint, gText, len, {100, 100});
         SkASSERT(!glyphRunList.empty());
-        SkSurfaceProps props;
-        if (canvas) { canvas->getProps(&props); }
-
-        auto colorSpace = SkColorSpace::MakeSRGB();
-        SkGlyphRunListPainter painter{props, kUnknown_SkColorType,
-                                      colorSpace.get(), SkStrikeCache::GlobalStrikeCache()};
+        auto device = SkTestCanvas<FillBench>::GetDevice(canvas);
         SkMatrix drawMatrix = view;
         const SkPoint drawOrigin = glyphRunList.origin();
         drawMatrix.preTranslate(drawOrigin.x(), drawOrigin.y());
-        GrSDFTControl control{false, props.isUseDeviceIndependentFonts(), 256, 256};
-        fBlob = GrTextBlob::Make(glyphRunList, paint, drawMatrix, control, &painter);
+        fBlob = sktext::gpu::TextBlob::Make(glyphRunList,
+                                            paint,
+                                            drawMatrix,
+                                            device->strikeDeviceInfo(),
+                                            SkStrikeCache::GlobalStrikeCache());
 
-        SkASSERT(!fBlob->subRunList().isEmpty());
-        GrAtlasSubRun* subRun = fBlob->subRunList().front().testingOnly_atlasSubRun();
+        const sktext::gpu::AtlasSubRun* subRun = fBlob->testingOnlyFirstSubRun();
         SkASSERT(subRun);
-        subRun->testingOnly_packedGlyphIDToGrGlyph(&fCache);
+        subRun->testingOnly_packedGlyphIDToGlyph(&fCache);
         fVertices.reset(new char[subRun->vertexStride(drawMatrix) * subRun->glyphCount() * 4]);
     }
 
     void onDraw(int loops, SkCanvas* canvas) override {
-        GrAtlasSubRun* subRun = fBlob->subRunList().front().testingOnly_atlasSubRun();
+        const sktext::gpu::AtlasSubRun* subRun = fBlob->testingOnlyFirstSubRun();
         SkASSERT(subRun);
 
         SkIRect clip = SkIRect::MakeEmpty();
@@ -72,13 +79,13 @@ class DirectMaskGlyphVertexFillBenchmark : public Benchmark {
 
         for (int loop = 0; loop < loops; loop++) {
             subRun->fillVertexData(fVertices.get(), 0, subRun->glyphCount(),
-                                   grColor, positionMatrix, clip);
+                                   grColor, positionMatrix, {0, 0}, clip);
         }
     }
 
 private:
-    sk_sp<GrTextBlob> fBlob;
-    GrStrikeCache fCache;
+    sk_sp<sktext::gpu::TextBlob> fBlob;
+    sktext::gpu::StrikeCache fCache;
     std::unique_ptr<char[]> fVertices;
 };
 

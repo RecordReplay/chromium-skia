@@ -6,6 +6,7 @@
  */
 
 #include "include/core/SkColorSpace.h"
+#include "include/core/SkFlattenable.h"
 #include "src/core/SkArenaAlloc.h"
 #include "src/core/SkColorSpacePriv.h"
 #include "src/core/SkColorSpaceXformSteps.h"
@@ -13,7 +14,94 @@
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkUtils.h"
 #include "src/core/SkVM.h"
-#include "src/shaders/SkColorShader.h"
+
+#ifdef SK_ENABLE_SKSL
+#include "src/core/SkKeyHelpers.h"
+#include "src/core/SkPaintParamsKey.h"
+#endif
+
+#include "src/shaders/SkShaderBase.h"
+
+class SkShaderCodeDictionary;
+
+/** \class SkColorShader
+    A Shader that represents a single color. In general, this effect can be
+    accomplished by just using the color field on the paint, but if an
+    actual shader object is needed, this provides that feature.
+*/
+class SkColorShader : public SkShaderBase {
+public:
+    /** Create a ColorShader that ignores the color in the paint, and uses the
+        specified color. Note: like all shaders, at draw time the paint's alpha
+        will be respected, and is applied to the specified color.
+    */
+    explicit SkColorShader(SkColor c);
+
+    bool isOpaque() const override;
+    bool isConstant() const override { return true; }
+
+    GradientType asGradient(GradientInfo* info, SkMatrix* localMatrix) const override;
+
+#if SK_SUPPORT_GPU
+    std::unique_ptr<GrFragmentProcessor> asFragmentProcessor(const GrFPArgs&) const override;
+#endif
+
+#ifdef SK_ENABLE_SKSL
+    void addToKey(const SkKeyContext&,
+                  SkPaintParamsKeyBuilder*,
+                  SkPipelineDataGatherer*) const override;
+#endif
+
+private:
+    friend void ::SkRegisterColorShaderFlattenable();
+    SK_FLATTENABLE_HOOKS(SkColorShader)
+
+    void flatten(SkWriteBuffer&) const override;
+
+    bool onAsLuminanceColor(SkColor* lum) const override {
+        *lum = fColor;
+        return true;
+    }
+
+    bool onAppendStages(const SkStageRec&) const override;
+
+    skvm::Color onProgram(skvm::Builder*, skvm::Coord device, skvm::Coord local, skvm::Color paint,
+                          const SkMatrixProvider&, const SkMatrix* localM, const SkColorInfo& dst,
+                          skvm::Uniforms* uniforms, SkArenaAlloc*) const override;
+
+    SkColor fColor;
+};
+
+class SkColor4Shader : public SkShaderBase {
+public:
+    SkColor4Shader(const SkColor4f&, sk_sp<SkColorSpace>);
+
+    bool isOpaque()   const override { return fColor.isOpaque(); }
+    bool isConstant() const override { return true; }
+
+#if SK_SUPPORT_GPU
+    std::unique_ptr<GrFragmentProcessor> asFragmentProcessor(const GrFPArgs&) const override;
+#endif
+#ifdef SK_ENABLE_SKSL
+    void addToKey(const SkKeyContext&,
+                  SkPaintParamsKeyBuilder*,
+                  SkPipelineDataGatherer*) const override;
+#endif
+
+private:
+    friend void ::SkRegisterColor4ShaderFlattenable();
+    SK_FLATTENABLE_HOOKS(SkColor4Shader)
+
+    void flatten(SkWriteBuffer&) const override;
+    bool onAppendStages(const SkStageRec&) const override;
+
+    skvm::Color onProgram(skvm::Builder*, skvm::Coord device, skvm::Coord local, skvm::Color paint,
+                          const SkMatrixProvider&, const SkMatrix* localM, const SkColorInfo& dst,
+                          skvm::Uniforms* uniforms, SkArenaAlloc*) const override;
+
+    sk_sp<SkColorSpace> fColorSpace;
+    const SkColor4f     fColor;
+};
 
 SkColorShader::SkColorShader(SkColor c) : fColor(c) {}
 
@@ -29,7 +117,8 @@ void SkColorShader::flatten(SkWriteBuffer& buffer) const {
     buffer.writeColor(fColor);
 }
 
-SkShader::GradientType SkColorShader::asAGradient(GradientInfo* info) const {
+SkShaderBase::GradientType SkColorShader::asGradient(GradientInfo* info,
+                                                     SkMatrix* localMatrix) const {
     if (info) {
         if (info->fColors && info->fColorCount >= 1) {
             info->fColors[0] = fColor;
@@ -37,12 +126,15 @@ SkShader::GradientType SkColorShader::asAGradient(GradientInfo* info) const {
         info->fColorCount = 1;
         info->fTileMode = SkTileMode::kRepeat;
     }
-    return kColor_GradientType;
+    if (localMatrix) {
+        *localMatrix = SkMatrix::I();
+    }
+    return GradientType::kColor;
 }
 
 SkColor4Shader::SkColor4Shader(const SkColor4f& color, sk_sp<SkColorSpace> space)
     : fColorSpace(std::move(space))
-    , fColor(color)
+    , fColor({color.fR, color.fG, color.fB, SkTPin(color.fA, 0.0f, 1.0f)})
 {}
 
 sk_sp<SkFlattenable> SkColor4Shader::CreateProc(SkReadBuffer& buffer) {
@@ -65,14 +157,6 @@ void SkColor4Shader::flatten(SkWriteBuffer& buffer) const {
     } else {
         buffer.writeBool(false);
     }
-}
-
-
-sk_sp<SkShader> SkShaders::Color(const SkColor4f& color, sk_sp<SkColorSpace> space) {
-    if (!SkScalarsAreFinite(color.vec(), 4)) {
-        return nullptr;
-    }
-    return sk_make_sp<SkColor4Shader>(color, std::move(space));
 }
 
 bool SkColorShader::onAppendStages(const SkStageRec& rec) const {
@@ -114,15 +198,15 @@ skvm::Color SkColor4Shader::onProgram(skvm::Builder* p,
 
 #if SK_SUPPORT_GPU
 
-#include "src/gpu/GrColorInfo.h"
-#include "src/gpu/GrColorSpaceXform.h"
-#include "src/gpu/GrFragmentProcessor.h"
-#include "src/gpu/SkGr.h"
+#include "src/gpu/ganesh/GrColorInfo.h"
+#include "src/gpu/ganesh/GrColorSpaceXform.h"
+#include "src/gpu/ganesh/GrFPArgs.h"
+#include "src/gpu/ganesh/GrFragmentProcessor.h"
+#include "src/gpu/ganesh/SkGr.h"
 
 std::unique_ptr<GrFragmentProcessor> SkColorShader::asFragmentProcessor(
         const GrFPArgs& args) const {
-    return GrFragmentProcessor::ModulateAlpha(/*child=*/nullptr,
-                                              SkColorToPMColor4f(fColor, *args.fDstColorInfo));
+    return GrFragmentProcessor::MakeColor(SkColorToPMColor4f(fColor, *args.fDstColorInfo));
 }
 
 std::unique_ptr<GrFragmentProcessor> SkColor4Shader::asFragmentProcessor(
@@ -131,7 +215,41 @@ std::unique_ptr<GrFragmentProcessor> SkColor4Shader::asFragmentProcessor(
                                   args.fDstColorInfo->colorSpace(), kUnpremul_SkAlphaType };
     SkColor4f color = fColor;
     steps.apply(color.vec());
-    return GrFragmentProcessor::ModulateAlpha(/*child=*/nullptr, color.premul());
+    return GrFragmentProcessor::MakeColor(color.premul());
 }
 
 #endif
+
+#ifdef SK_ENABLE_SKSL
+void SkColorShader::addToKey(const SkKeyContext& keyContext,
+                             SkPaintParamsKeyBuilder* builder,
+                             SkPipelineDataGatherer* gatherer) const {
+    SolidColorShaderBlock::BeginBlock(keyContext, builder, gatherer,
+                                      SkColor4f::FromColor(fColor).premul());
+    builder->endBlock();
+}
+
+void SkColor4Shader::addToKey(const SkKeyContext& keyContext,
+                              SkPaintParamsKeyBuilder* builder,
+                              SkPipelineDataGatherer* gatherer) const {
+    SolidColorShaderBlock::BeginBlock(keyContext, builder, gatherer, fColor.premul());
+    builder->endBlock();
+}
+#endif
+
+sk_sp<SkShader> SkShaders::Color(SkColor color) { return sk_make_sp<SkColorShader>(color); }
+
+sk_sp<SkShader> SkShaders::Color(const SkColor4f& color, sk_sp<SkColorSpace> space) {
+    if (!SkScalarsAreFinite(color.vec(), 4)) {
+        return nullptr;
+    }
+    return sk_make_sp<SkColor4Shader>(color, std::move(space));
+}
+
+void SkRegisterColor4ShaderFlattenable() {
+    SK_REGISTER_FLATTENABLE(SkColor4Shader);
+}
+
+void SkRegisterColorShaderFlattenable() {
+    SK_REGISTER_FLATTENABLE(SkColorShader);
+}

@@ -6,16 +6,6 @@
 from . import util
 
 
-def build_command_buffer(api, chrome_dir, skia_dir, out):
-  api.run(api.python, 'build command_buffer',
-      script=skia_dir.join('tools', 'build_command_buffer.py'),
-      args=[
-        '--chrome-dir', chrome_dir,
-        '--output-dir', out,
-        '--extra-gn-args', 'mac_sdk_min="10.13"',
-        '--no-sync', '--no-hooks', '--make-output-dir'])
-
-
 def compile_swiftshader(api, extra_tokens, swiftshader_root, cc, cxx, out):
   """Build SwiftShader with CMake.
 
@@ -25,7 +15,7 @@ def compile_swiftshader(api, extra_tokens, swiftshader_root, cc, cxx, out):
   Args:
     swiftshader_root: root of the SwiftShader checkout.
     cc, cxx: compiler binaries to use
-    out: target directory for libEGL.so and libGLESv2.so
+    out: target directory for libvk_swiftshader.so
   """
   swiftshader_opts = [
       '-DSWIFTSHADER_BUILD_TESTS=OFF',
@@ -48,8 +38,6 @@ def compile_swiftshader(api, extra_tokens, swiftshader_root, cc, cxx, out):
   san = None
   if 'MSAN' in extra_tokens:
     san = ('msan','memory')
-  elif 'TSAN' in extra_tokens:
-    san = ('tsan','thread')
 
   if san:
     short,full = san
@@ -62,6 +50,7 @@ def compile_swiftshader(api, extra_tokens, swiftshader_root, cc, cxx, out):
       '-lc++abi',
       '-I%s/include' % libcxx,
       '-I%s/include/c++/v1' % libcxx,
+      '-Wno-unused-command-line-argument'  # Are -lc++abi and -Llibcxx/lib always unused?
     ])
     swiftshader_opts.extend([
       '-DSWIFTSHADER_{}=ON'.format(short.upper()),
@@ -74,8 +63,9 @@ def compile_swiftshader(api, extra_tokens, swiftshader_root, cc, cxx, out):
   with api.context(cwd=out, env=env):
     api.run(api.step, 'swiftshader cmake',
             cmd=['cmake'] + swiftshader_opts + [swiftshader_root, '-GNinja'])
-    api.run(api.step, 'swiftshader ninja',
-            cmd=['ninja', '-C', out, 'libEGL.so', 'libGLESv2.so'])
+    # See https://swiftshader-review.googlesource.com/c/SwiftShader/+/56452 for when the
+    # deprecated targets were added. See skbug.com/12386 for longer-term plans.
+    api.run(api.step, 'swiftshader ninja', cmd=['ninja', '-C', out, 'vk_swiftshader'])
 
 
 def compile_fn(api, checkout_root, out_dir):
@@ -127,15 +117,16 @@ def compile_fn(api, checkout_root, out_dir):
       api.step('select xcode', [
           'sudo', 'xcode-select', '-switch', xcode_app_path])
       if 'iOS' in extra_tokens:
-        # Can't compile for Metal before 11.0.
+        # Our current min-spec for Skia is iOS 11
         env['IPHONEOS_DEPLOYMENT_TARGET'] = '11.0'
+        args['ios_min_target'] = '"11.0"'
       else:
         # We have some bots on 10.13.
         env['MACOSX_DEPLOYMENT_TARGET'] = '10.13'
 
   if 'CheckGeneratedFiles' in extra_tokens:
     compiler = 'Clang'
-    args['skia_compile_processors'] = 'true'
+    args['skia_compile_modules'] = 'true'
     args['skia_compile_sksl_tests'] = 'true'
     args['skia_generate_workarounds'] = 'true'
 
@@ -198,6 +189,14 @@ def compile_fn(api, checkout_root, out_dir):
 
   if compiler != 'MSVC' and configuration == 'Debug':
     extra_cflags.append('-O1')
+  if compiler != 'MSVC' and configuration == 'OptimizeForSize':
+    # build IDs are required for Bloaty if we want to use strip to ignore debug symbols.
+    # https://github.com/google/bloaty/blob/master/doc/using.md#debugging-stripped-binaries
+    extra_ldflags.append('-Wl,--build-id=sha1')
+    args.update({
+      'skia_use_runtime_icu': 'true',
+      'skia_enable_optimize_size': 'true',
+    })
 
   if 'Exceptions' in extra_tokens:
     extra_cflags.append('/EHsc')
@@ -233,29 +232,20 @@ def compile_fn(api, checkout_root, out_dir):
     swiftshader_root = skia_dir.join('third_party', 'externals', 'swiftshader')
     swiftshader_out = out_dir.join('swiftshader_out')
     compile_swiftshader(api, extra_tokens, swiftshader_root, cc, cxx, swiftshader_out)
-    args['skia_use_egl'] = 'true'
-    extra_cflags.extend([
-        '-DGR_EGL_TRY_GLES3_THEN_GLES2',
-        '-I%s' % skia_dir.join(
-            'third_party', 'externals', 'egl-registry', 'api'),
-        '-I%s' % skia_dir.join(
-            'third_party', 'externals', 'opengl-registry', 'api'),
+    args['skia_use_vulkan'] = 'true'
+    extra_cflags.extend(['-DSK_GPU_TOOLS_VK_LIBRARY_NAME=%s' %
+        api.vars.swarming_out_dir.join('swiftshader_out', 'libvk_swiftshader.so'),
     ])
-    extra_ldflags.extend([
-        '-L%s' % swiftshader_out,
-    ])
-  if 'CommandBuffer' in extra_tokens:
-    # CommandBuffer runs against GLES version of CommandBuffer also, so
-    # include both.
-    args.update({
-      'skia_gl_standard': '""',
-    })
-    chrome_dir = checkout_root
-    api.run.run_once(build_command_buffer, api, chrome_dir, skia_dir, out_dir)
   if 'MSAN' in extra_tokens:
     args['skia_use_fontconfig'] = 'false'
   if 'ASAN' in extra_tokens:
     args['skia_enable_spirv_validation'] = 'false'
+  if 'NoPrecompile' in extra_tokens:
+    args['skia_enable_precompile'] = 'false'
+  if 'Graphite' in extra_tokens:
+    args['skia_enable_graphite'] = 'true'
+  if 'NoGpu' in extra_tokens:
+    args['skia_enable_gpu'] = 'false'
   if 'NoDEPS' in extra_tokens:
     args.update({
       'is_official_build':             'true',
@@ -266,6 +256,7 @@ def compile_fn(api, checkout_root, out_dir):
       'skia_use_expat':                'false',
       'skia_use_freetype':             'false',
       'skia_use_harfbuzz':             'false',
+      'skia_use_icu':                  'false',
       'skia_use_libjpeg_turbo_decode': 'false',
       'skia_use_libjpeg_turbo_encode': 'false',
       'skia_use_libpng_decode':        'false',
@@ -273,6 +264,7 @@ def compile_fn(api, checkout_root, out_dir):
       'skia_use_libwebp_decode':       'false',
       'skia_use_libwebp_encode':       'false',
       'skia_use_vulkan':               'false',
+      'skia_use_wuffs':                'false',
       'skia_use_zlib':                 'false',
     })
   if 'Shared' in extra_tokens:
@@ -280,30 +272,21 @@ def compile_fn(api, checkout_root, out_dir):
   if 'Vulkan' in extra_tokens and not 'Android' in extra_tokens:
     args['skia_use_vulkan'] = 'true'
     args['skia_enable_vulkan_debug_layers'] = 'true'
-    args['skia_use_gl'] = 'false'
+    # When running TSAN with Vulkan on NVidia, we experienced some timeouts. We found
+    # a workaround (in GrContextFactory) that requires GL (in addition to Vulkan).
+    if 'TSAN' in extra_tokens:
+      args['skia_use_gl'] = 'true'
+    else:
+      args['skia_use_gl'] = 'false'
   if 'Direct3D' in extra_tokens:
     args['skia_use_direct3d'] = 'true'
     args['skia_use_gl'] = 'false'
   if 'Metal' in extra_tokens:
     args['skia_use_metal'] = 'true'
     args['skia_use_gl'] = 'false'
-  if 'OpenCL' in extra_tokens:
-    args['skia_use_opencl'] = 'true'
-    if api.vars.is_linux:
-      extra_cflags.append(
-          '-isystem%s' % api.vars.workdir.join('opencl_headers'))
-      extra_ldflags.append(
-          '-L%s' % api.vars.workdir.join('opencl_ocl_icd_linux'))
-    elif 'Win' in os:
-      extra_cflags.append(
-          '-imsvc%s' % api.vars.workdir.join('opencl_headers'))
-      extra_ldflags.append(
-          '/LIBPATH:%s' %
-          skia_dir.join('third_party', 'externals', 'opencl-lib', '3-0', 'lib',
-                        'x86_64'))
   if 'iOS' in extra_tokens:
     # Bots use Chromium signing cert.
-    args['skia_ios_identity'] = '".*GS9WA.*"'
+    args['skia_ios_identity'] = '".*83FNP.*"'
     # Get mobileprovision via the CIPD package.
     args['skia_ios_profile'] = '"%s"' % api.vars.workdir.join(
         'provisioning_profile_ios',
@@ -327,6 +310,9 @@ def compile_fn(api, checkout_root, out_dir):
   if 'Wuffs' in extra_tokens:
     args['skia_use_wuffs'] = 'true'
 
+  if 'AVIF' in extra_tokens:
+    args['skia_use_libavif'] = 'true'
+
   for (k,v) in {
     'cc':  cc,
     'cxx': cxx,
@@ -335,7 +321,7 @@ def compile_fn(api, checkout_root, out_dir):
     'target_os': 'ios' if 'iOS' in extra_tokens else '',
     'win_sdk': win_toolchain + '/win_sdk' if 'Win' in os else '',
     'win_vc': win_toolchain + '/VC' if 'Win' in os else '',
-  }.iteritems():
+  }.items():
     if v:
       args[k] = '"%s"' % v
   if extra_cflags:
@@ -343,7 +329,7 @@ def compile_fn(api, checkout_root, out_dir):
   if extra_ldflags:
     args['extra_ldflags'] = repr(extra_ldflags).replace("'", '"')
 
-  gn_args = ' '.join('%s=%s' % (k,v) for (k,v) in sorted(args.iteritems()))
+  gn_args = ' '.join('%s=%s' % (k,v) for (k,v) in sorted(args.items()))
   gn = skia_dir.join('bin', 'gn')
 
   with api.context(cwd=skia_dir):
@@ -372,12 +358,16 @@ def copy_build_products(api, src, dst):
   util.copy_listed_files(api, src, dst, util.DEFAULT_BUILD_PRODUCTS)
   extra_tokens  = api.vars.extra_tokens
   os            = api.vars.builder_cfg.get('os', '')
+  configuration = api.vars.builder_cfg.get('configuration', '')
 
   if 'SwiftShader' in extra_tokens:
     util.copy_listed_files(api,
         src.join('swiftshader_out'),
         api.vars.swarming_out_dir.join('swiftshader_out'),
         util.DEFAULT_BUILD_PRODUCTS)
+
+  if configuration == 'OptimizeForSize':
+    util.copy_listed_files(api, src, dst, ['skottie_tool_cpu', 'skottie_tool_gpu'])
 
   if os == 'Mac' and any('SAN' in t for t in extra_tokens):
     # The XSAN dylibs are in

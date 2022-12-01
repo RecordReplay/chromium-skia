@@ -35,14 +35,14 @@ template<typename T> inline void sk_ignore_unused_variable(const T&) { }
 /**
  *  Returns a pointer to a D which comes immediately after S[count].
  */
-template <typename D, typename S> static D* SkTAfter(S* ptr, size_t count = 1) {
+template <typename D, typename S> inline D* SkTAfter(S* ptr, size_t count = 1) {
     return reinterpret_cast<D*>(ptr + count);
 }
 
 /**
  *  Returns a pointer to a D which comes byteOffset bytes after S.
  */
-template <typename D, typename S> static D* SkTAddOffset(S* ptr, size_t byteOffset) {
+template <typename D, typename S> inline D* SkTAddOffset(S* ptr, ptrdiff_t byteOffset) {
     // The intermediate char* has the same cv-ness as D as this produces better error messages.
     // This relies on the fact that reinterpret_cast can add constness, but cannot remove it.
     return reinterpret_cast<D*>(reinterpret_cast<sknonstd::same_cv_t<char, D>*>(ptr) + byteOffset);
@@ -103,7 +103,7 @@ public:
 
     /** Reallocates given a new count. Reallocation occurs even if new count equals old count.
      */
-    void reset(int count) { *this = SkAutoTArray(count);  }
+    void reset(int count = 0) { *this = SkAutoTArray(count); }
 
     /** Return the array of T elements. Will be NULL if count == 0
      */
@@ -235,7 +235,10 @@ private:
 /** Manages an array of T elements, freeing the array in the destructor.
  *  Does NOT call any constructors/destructors on T (T must be POD).
  */
-template <typename T> class SkAutoTMalloc  {
+template <typename T,
+          typename = std::enable_if_t<std::is_trivially_default_constructible<T>::value &&
+                                      std::is_trivially_destructible<T>::value>>
+class SkAutoTMalloc  {
 public:
     /** Takes ownership of the ptr. The ptr must be a value which can be passed to sk_free. */
     explicit SkAutoTMalloc(T* ptr = nullptr) : fPtr(ptr) {}
@@ -283,7 +286,11 @@ private:
     std::unique_ptr<T, SkFunctionWrapper<void(void*), sk_free>> fPtr;
 };
 
-template <size_t kCountRequested, typename T> class SkAutoSTMalloc {
+template <size_t kCountRequested,
+          typename T,
+          typename = std::enable_if_t<std::is_trivially_default_constructible<T>::value &&
+                                      std::is_trivially_destructible<T>::value>>
+class SkAutoSTMalloc {
 public:
     SkAutoSTMalloc() : fPtr(fTStorage) {}
 
@@ -386,32 +393,6 @@ private:
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-/**
- *  Pass the object and the storage that was offered during SkInPlaceNewCheck, and this will
- *  safely destroy (and free if it was dynamically allocated) the object.
- */
-template <typename T> void SkInPlaceDeleteCheck(T* obj, void* storage) {
-    if (storage == obj) {
-        obj->~T();
-    } else {
-        delete obj;
-    }
-}
-
-/**
- *  Allocates T, using storage if it is large enough, and allocating on the heap (via new) if
- *  storage is not large enough.
- *
- *      obj = SkInPlaceNewCheck<Type>(storage, size);
- *      ...
- *      SkInPlaceDeleteCheck(obj, storage);
- */
-template<typename T, typename... Args>
-T* SkInPlaceNewCheck(void* storage, size_t size, Args&&... args) {
-    return (sizeof(T) <= size) ? new (storage) T(std::forward<Args>(args)...)
-                               : new T(std::forward<Args>(args)...);
-}
-
 template <int N, typename T> class SkAlignedSTStorage {
 public:
     SkAlignedSTStorage() {}
@@ -442,5 +423,29 @@ template<size_t N, typename C> constexpr auto SkMakeArray(C c)
 -> std::array<decltype(c(std::declval<typename std::index_sequence<N>::value_type>())), N> {
     return SkMakeArrayFromIndexSequence(c, std::make_index_sequence<N>{});
 }
+
+/**
+ * Trait for identifying types which are relocatable via memcpy, for container optimizations.
+ *
+ */
+template<typename, typename = void>
+struct sk_has_trivially_relocatable_member : std::false_type {};
+
+// Types can declare themselves trivially relocatable with a public
+//    using sk_is_trivially_relocatable = std::true_type;
+template<typename T>
+struct sk_has_trivially_relocatable_member<T, std::void_t<typename T::sk_is_trivially_relocatable>>
+        : T::sk_is_trivially_relocatable {};
+
+// By default, all trivially copyable types are trivially relocatable.
+template <typename T>
+struct sk_is_trivially_relocatable
+        : std::disjunction<std::is_trivially_copyable<T>, sk_has_trivially_relocatable_member<T>
+>{};
+
+// Here be some dragons: while technically not guaranteed, we count on all sane unique_ptr
+// implementations to be trivially relocatable.
+template <typename T>
+struct sk_is_trivially_relocatable<std::unique_ptr<T>> : std::true_type {};
 
 #endif

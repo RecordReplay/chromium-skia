@@ -6,6 +6,7 @@
  */
 
 #include "include/core/SkCanvas.h"
+#include "include/core/SkFont.h"
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkGraphics.h"
 #include "include/core/SkPath.h"
@@ -50,21 +51,19 @@ public:
 
             (void) m2.setPolyToPoly((const SkPoint*)src1, (SkPoint*)dst1, 4);
 
-            {
-                const SkPoint src[] = {
-                    { SkIntToScalar(1), SkIntToScalar(0) },
-                    { SkIntToScalar(4), SkIntToScalar(7) },
-                    { SkIntToScalar(10), SkIntToScalar(2) }
-                };
-                const SkPoint dst[] = {
-                    { SkIntToScalar(4), SkIntToScalar(2) },
-                    { SkIntToScalar(45), SkIntToScalar(26) },
-                    { SkIntToScalar(32), SkIntToScalar(17) }
-                };
+            const SkPoint src2[] = {
+                { SkIntToScalar(1), SkIntToScalar(0) },
+                { SkIntToScalar(4), SkIntToScalar(7) },
+                { SkIntToScalar(10), SkIntToScalar(2) }
+            };
+            const SkPoint dst2[] = {
+                { SkIntToScalar(4), SkIntToScalar(2) },
+                { SkIntToScalar(45), SkIntToScalar(26) },
+                { SkIntToScalar(32), SkIntToScalar(17) }
+            };
 
-                SkMatrix m0;
-                m0.setPolyToPoly(src, dst, 3);
-            }
+            SkMatrix m0;
+            m0.setPolyToPoly(src2, dst2, 3);
         }
     }
 

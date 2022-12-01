@@ -5,23 +5,44 @@
  * found in the LICENSE file.
  */
 
+#include "include/core/SkAlphaType.h"
 #include "include/core/SkBitmap.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkColorPriv.h"
+#include "include/core/SkColorType.h"
+#include "include/core/SkFlattenable.h"
+#include "include/core/SkImageFilter.h"
+#include "include/core/SkImageInfo.h"
+#include "include/core/SkMath.h"
+#include "include/core/SkPoint.h"
 #include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkSize.h"
 #include "include/core/SkTileMode.h"
-#include "include/core/SkUnPreMultiply.h"
+#include "include/core/SkTypes.h"
 #include "include/effects/SkImageFilters.h"
-#include "include/private/SkColorData.h"
 #include "include/private/SkTPin.h"
+#include "include/private/SkTemplates.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkSpecialImage.h"
 #include "src/core/SkWriteBuffer.h"
-#include "src/gpu/SkGr.h"
+
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <utility>
+class SkMatrix;
 
 #if SK_SUPPORT_GPU
-#include "src/gpu/GrRecordingContextPriv.h"
-#include "src/gpu/GrTextureProxy.h"
-#include "src/gpu/effects/GrMatrixConvolutionEffect.h"
+#include "include/gpu/GrRecordingContext.h"
+#include "src/gpu/ganesh/GrFragmentProcessor.h"
+#include "src/gpu/ganesh/GrRecordingContextPriv.h"
+#include "src/gpu/ganesh/GrSurfaceProxy.h"
+#include "src/gpu/ganesh/GrSurfaceProxyView.h"
+#include "src/gpu/ganesh/SkGr.h"
+#include "src/gpu/ganesh/effects/GrMatrixConvolutionEffect.h"
 #endif
 
 namespace {
@@ -58,7 +79,7 @@ protected:
     sk_sp<SkSpecialImage> onFilterImage(const Context&, SkIPoint* offset) const override;
     SkIRect onFilterNodeBounds(const SkIRect&, const SkMatrix& ctm,
                                MapDirection, const SkIRect* inputRect) const override;
-    bool affectsTransparentBlack() const override;
+    bool onAffectsTransparentBlack() const override;
 
 private:
     friend void ::SkRegisterMatrixConvolutionImageFilterFlattenable();
@@ -76,7 +97,7 @@ private:
     void filterPixels(const SkBitmap& src,
                       SkBitmap* result,
                       SkIVector& offset,
-                      const SkIRect& rect,
+                      SkIRect rect,
                       const SkIRect& bounds) const;
     template <class PixelFetcher>
     void filterPixels(const SkBitmap& src,
@@ -235,9 +256,8 @@ template<class PixelFetcher, bool convolveAlpha>
 void SkMatrixConvolutionImageFilter::filterPixels(const SkBitmap& src,
                                                   SkBitmap* result,
                                                   SkIVector& offset,
-                                                  const SkIRect& r,
+                                                  SkIRect rect,
                                                   const SkIRect& bounds) const {
-    SkIRect rect(r);
     if (!rect.intersect(bounds)) {
         return;
     }
@@ -366,12 +386,14 @@ sk_sp<SkSpecialImage> SkMatrixConvolutionImageFilter::onFilterImage(const Contex
         // called pad_image to account for our dilation of bounds, so the result will already be
         // moved to the destination color space. If a filter DAG avoids that, then we use this
         // fall-back, which saves us from having to do the xform during the filter itself.
-        input = ImageToColorSpace(input.get(), ctx.colorType(), ctx.colorSpace());
+        input = ImageToColorSpace(input.get(), ctx.colorType(), ctx.colorSpace(),
+                                  ctx.surfaceProps());
 
         GrSurfaceProxyView inputView = input->view(context);
         SkASSERT(inputView.asTextureProxy());
 
         const auto isProtected = inputView.proxy()->isProtected();
+        const auto origin = inputView.origin();
 
         offset->fX = dstBounds.left();
         offset->fY = dstBounds.top();
@@ -403,7 +425,7 @@ sk_sp<SkSpecialImage> SkMatrixConvolutionImageFilter::onFilterImage(const Contex
         // evaluating the FP, and the dst rect just uses the size of dstBounds.
         dstBounds.offset(input->subset().x(), input->subset().y());
         return DrawWithFP(context, std::move(fp), dstBounds, ctx.colorType(), ctx.colorSpace(),
-                          isProtected);
+                          ctx.surfaceProps(), origin, isProtected);
     }
 #endif
 
@@ -470,7 +492,7 @@ sk_sp<SkSpecialImage> SkMatrixConvolutionImageFilter::onFilterImage(const Contex
     this->filterBorderPixels(inputBM, &dst, dstContentOffset, bottom, srcBounds);
 
     return SkSpecialImage::MakeFromRaster(SkIRect::MakeWH(dstBounds.width(), dstBounds.height()),
-                                          dst);
+                                          dst, ctx.surfaceProps());
 }
 
 SkIRect SkMatrixConvolutionImageFilter::onFilterNodeBounds(
@@ -493,7 +515,7 @@ SkIRect SkMatrixConvolutionImageFilter::onFilterNodeBounds(
     return dst;
 }
 
-bool SkMatrixConvolutionImageFilter::affectsTransparentBlack() const {
+bool SkMatrixConvolutionImageFilter::onAffectsTransparentBlack() const {
     // It seems that the only rational way for repeat sample mode to work is if the caller
     // explicitly restricts the input in which case the input range is explicitly known and
     // specified.

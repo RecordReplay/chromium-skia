@@ -19,7 +19,7 @@
 #include <limits>
 #include <vector>
 
-DEFINE_bool(verboseFontMgr, false, "FontMgr will be very verbose.");
+DECLARE_bool(verboseFontMgr);
 
 DEF_TEST(FontMgr_Font, reporter) {
     SkFont font(nullptr, 24);
@@ -38,7 +38,7 @@ DEF_TEST(FontMgr_Font, reporter) {
     for (const auto glyph : glyphs) { REPORTER_ASSERT(reporter, glyph == 0); }
 
     SkAssertResult(font.textToGlyphs("Hello", 5, SkTextEncoding::kUTF8, glyphs,
-                                     SK_ARRAY_COUNT(glyphs)) == count);
+                                     std::size(glyphs)) == count);
 
     for (int i = 0; i < count; ++i) {
         REPORTER_ASSERT(reporter, 0 != glyphs[i]);
@@ -62,20 +62,21 @@ DEF_TEST(FontMgr_AliasNames, reporter) {
         "sans", "sans-serif", "serif", "monospace", "times", "helvetica"
     };
 
-    for (size_t i = 0; i < SK_ARRAY_COUNT(inNames); ++i) {
+    for (size_t i = 0; i < std::size(inNames); ++i) {
         sk_sp<SkTypeface> first(SkTypeface::MakeFromName(inNames[i], SkFontStyle()));
         if (nullptr == first.get()) {
             continue;
         }
+        SkString firstName;
+        first->getFamilyName(&firstName);
         for (int j = 0; j < 10; ++j) {
             sk_sp<SkTypeface> face(SkTypeface::MakeFromName(inNames[i], SkFontStyle()));
-    #if 0
+
             SkString name;
             face->getFamilyName(&name);
-            printf("request %s, received %s, first id %x received %x\n",
-                   inNames[i], name.c_str(), first->uniqueID(), face->uniqueID());
-    #endif
-            REPORTER_ASSERT(reporter, first->uniqueID() == face->uniqueID());
+            REPORTER_ASSERT(reporter, first->uniqueID() == face->uniqueID(),
+                "Request \"%s\" First Name: \"%s\" Id: %x Received Name \"%s\" Id %x",
+                inNames[i], firstName.c_str(), first->uniqueID(), name.c_str(), face->uniqueID());
         }
     }
 }
@@ -159,6 +160,7 @@ DEF_TEST(FontMgr_MatchStyleCSS3, reporter) {
         SkTypeface::LocalizedStrings* onCreateFamilyNameIterator() const override {
             return new EmptyLocalizedStrings;
         }
+        bool onGlyphMaskNeedsCurrentColor() const override { return false; }
         int onGetVariationDesignPosition(
                 SkFontArguments::VariationPosition::Coordinate coordinates[],
                 int coordinateCount) const override

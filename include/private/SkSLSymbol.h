@@ -22,17 +22,15 @@ public:
         kExternal = (int) ProgramElement::Kind::kLast + 1,
         kField,
         kFunctionDeclaration,
-        kSymbolAlias,
         kType,
-        kUnresolvedFunction,
         kVariable,
 
         kFirst = kExternal,
         kLast = kVariable
     };
 
-    Symbol(int offset, Kind kind, StringFragment name, const Type* type = nullptr)
-        : INHERITED(offset, (int) kind)
+    Symbol(Position pos, Kind kind, std::string_view name, const Type* type = nullptr)
+        : INHERITED(pos, (int) kind)
         , fName(name)
         , fType(type) {
         SkASSERT(kind >= Kind::kFirst && kind <= Kind::kLast);
@@ -49,8 +47,15 @@ public:
         return (Kind) fKind;
     }
 
-    StringFragment name() const {
+    std::string_view name() const {
         return fName;
+    }
+
+    /**
+     *  Don't call this directly--use SymbolTable::renameSymbol instead!
+     */
+    void setName(std::string_view newName) {
+        fName = newName;
     }
 
     /**
@@ -78,12 +83,10 @@ public:
     }
 
 private:
-    StringFragment fName;
+    std::string_view fName;
     const Type* fType;
 
     using INHERITED = IRNode;
-
-    friend class Type;
 };
 
 }  // namespace SkSL

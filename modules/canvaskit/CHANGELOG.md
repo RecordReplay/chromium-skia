@@ -6,9 +6,278 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+ - Font resolution algorithm for ellipsis in SkParagraph (skbug.com/11797)
+ - GrContexts will properly target the correct WebGL context
+ - CanvasKit built with no_embedded_font will properly link and be able to load fonts from passed-in
+   bytes.
+
+## [0.37.0] - 2022-09-07
+
+### Added
+ - Paragraph has new setting: `replaceTabCharacters`.
+ - New API, tests and sample for SkParagraph Client provided ICU API:
+   - buildWithClientInfo
+   - getText
+
+### Fixed
+ - readPixels calls could sometimes fail due to a stale internal reference to GrDirectContext.
+
+## [0.36.1] - 2022-08-22
+
+### Changed
+ - Perspective text is enabled.
+
+### Fixed
+ - Text is no longer distorted on certain Adreno GPUs (http://review.skia.org/571418)
+
+## [0.36.0] - 2022-08-16
+
+### Added
+ - The following path methods: `addCircle`, `CanInterpolate`, and `MakeFromPathInterpolation`.
+ - The following ImageFilter factory methods: `MakeBlend`, `MakeDilate`, `MakeDisplacementMap`,
+   `MakeDropShadow`, `MakeDropShadowOnly`, `MakeErode`, `MakeImage`, `MakeOffset`, and `MakeShader`.
+ - The `MakeLuma` ColorFilter factory method.
+ - The `fontVariations` TextStyle property.
+ - `ColorFilter.MakeBlend` supports float colors under the hood and takes an optional colorspace.
+
+### Changed
+ - Updated `dtslint`, `typescript`, and `@webgpu/types` versions, used for testing index.d.ts types.
+
+### Fixed
+ - `Image.readPixels` should work on `Image`s created with `MakeLazyImageFromTextureSource`
+   (https://github.com/flutter/flutter/issues/103803)
+
+### Known Issues
+ - `ImageFilter.MakeDisplacementMap` is not behaving as expected in certain circumstances.
+
+## [0.35.0] - 2022-06-30
+
+### Fixed
+ - Minor bug fixes in the TypeScript type declaration.
+ - Creating a Premul Image from a TextureSource should upload the texture to WebGL correctly.
+
+### Added
+ - `Surface.makeImageFromTextureSource`, `Surface.updateTextureFromSource`, and
+   `MakeLazyImageFromTextureSource` all take an optional `srcIsPremul` to specify if their source
+   data has Premultiplied alpha. This avoids double multiplying alpha in certain cases.
+ - WebGPU support. Introduced `CanvasKit.MakeGPUDeviceContext`, `CanvasKit.MakeGPUCanvasContext`,
+   `CanvasKit.MakeGPUCanvasSurface`, and `CanvasKit.MakeGPUTextureSurface` which are compatible with
+   WebGPU `GPUDevice` and `GPUTexture` objects.
+ - Typescript definitions for WebGPU API functions that are compatible with `@webgpu/types`
+   (https://www.npmjs.com/package/@webgpu/types).
+ - `CanvasKit.MakeCanvasSurface` is now deprecated. Clients should specify a backend target
+   explicitly using `CanvasKit.MakeSWCanvasSurface`, `CanvasKit.MakeOnScreenGLSurface`,
+   `CanvasKit.MakeGPUCanvasSurface`, and `CanvasKit.MakeGPUTextureSurface`.
+ - `CanvasKit.MakeGrContext` is now deprecated. Clients should use `CanvasKit.MakeWebGLContext` and
+   `CanvasKit.MakeGPUDeviceContext` instead.
+
+## [0.34.1] - 2022-06-02
+
+### Added
+ - `Canvas.getDeviceClipBounds` (skbug.com/13347)
+
+### Fixed
+ - `RuntimeEffect.makeShader` and `RuntimeEffect.makeShaderWithChildren` can properly accept
+   uniform data as MallocObj or derived TypedArrays without incorrectly freeing the uniform data.
+
+## [0.34.0] - 2022-05-05
+
+### Breaking
+ - `SkRuntimeEffect.makeShader` and `SkRuntimeEffect.makeShaderWithChildren` no longer accept
+   an `isOpaque` parameter. These functions will now make a best effort to determine if your
+   shader always produces opaque output, and optimize accordingly. If you definitely want your
+   shader to produce opaque output, do so in the shader's SkSL code.
+
+### Added
+ - `SkPicture.makeShader`
+ - Skia now has a GN toolchain that is used to compile CanvasKit. Ideally, all settings should
+   be the same, but there may be some subtle differences in practice. This changes the setup
+   to build CanvasKit (users no longer need to download emsdk themselves).
+
+### Changed
+ - If an invalid matrix type is passed in (e.g. not an array, TypedArray, or DOMMatrix), CanvasKit
+   will throw instead of drawing incorrectly.
+
+### Fixed
+ - SkParagraph objects no longer have their glyphs garbled when stored to an SkPicture.
+   (skbug.com/13247)
+
+## [0.33.0] - 2022-02-03
+
+### Added
+ - `Surface.updateTextureFromSource` prevents flickering on some platforms by re-using the texture
+   for a given `Image` instead of needing to always create a new one via
+   `Surface.makeImageFromTextureSource`. (skbug.com/12723)
+ - `ParagraphBuilder.reset` allows re-use of the underlying memory.
+ - `PathEffect.MakePath2D`, `PathEffect.MakePath1D` and `PathEffect.MakeLine2D`.
+
+### Changed
+ - Surface factories always produce a surface with an attached color space. Specifying `null` to
+   `CanvasKit.MakeWebGLCanvasSurface` or calling any factory that does not take a color space
+   will now create a surface with a color space of `CanvasKit.ColorSpace.SRGB`.
+ - We now build/ship with emscripten 3.1.3.
+ - Internal calls no longer use dynamic dispatch (skbug.com/12795).
+ - JPEG and WEBP encoding are turned on by default in full version (in /bin/full/).
+
+### Fixed
+ - Supplying textures via `Surface.makeImageFromTextureSource` should not cause issues with
+   Mipmaps or other places where Skia needs to create textures (skbug.com/12797)
+ - `CanvasKit.MakeRenderTarget` correctly takes 2 or 3 params, as per the documentation.
+ - `CanvasKit.MakeOnScreenGLSurface` and other gpu surface constructors correctly adjust the
+   underlying WebGL context, avoiding corruption and mismatched textures
+   (https://github.com/flutter/flutter/issues/95259).
+
+## [0.32.0] - 2021-12-15
+
+### Breaking
+ - `Canvas.drawVertices` and `Canvas.drawPatch` treat the default blend mode differently.
+   See https://bugs.chromium.org/p/skia/issues/detail?id=12662.
+ - `Canvas.markCTM` and `Canvas.findMarkedCTM` have been removed. They were effectively no-ops.
+
+### Added
+ - Rough implementation of `measureText` to Canvas2D emulation layer. For accurate numbers, clients
+   should use a real shaping library, like SkParagraph.
+ - `AnimatedImage.currentFrameDuration` has been added, as well as some clarifying documentation.
+
+### Fixed
+ - Drawing images created from MakeLazyImageFromTextureSource should no longer cause a draw to only
+   partially show up on some frames <https://crbug.com/skia/12740>.
+
+## [0.31.0] - 2021-11-16
+
+### Added
+ - `CanvasKit.MakeLazyImageFromTextureSource`, which is similar to
+   `Surface.makeImageFromTextureSource`, but can be re-used across different WebGL contexts.
+
+### Breaking
+ - `Surface.makeImageFromTextureSource` now takes an optional ImageInfo or PartialImageInfo
+   instead of optional width and height. Sensible defaults will be used if not supplied.
+
+### Fixed
+ - Some `Surface` methods would not properly switch to the right WebGL context.
+ - Warnings about `INVALID_ENUM: enable: invalid capability` should be reduced/eliminated.
+
+### Removed
+ - `FontMgr.MakeTypefaceFromData` and `FontMgr.RefDefault` have been removed in favor of
+   `Typeface.MakeFreeTypeFaceFromData`
+
+### Changed
+ - `make release`, `make debug`, and variants put the output in a different location (./build).
+ - Example .html files load CanvasKit from the new location (./build).
+
+### Type Changes (index.d.ts)
+ - `Surface.requestAnimationFrame` and `Surface.drawOnce` are properly documented.
+ - Fixed typo in TextStyle (decrationStyle => decorationStyle)
+
+## [0.30.0] - 2021-09-15
+
+### Removed
+ - `Surface.grContext` and `Surface.openGLversion` - these had been undocumented and are no longer
+   exposed.
+ - `CanvasKit.setCurrentContext` and `CanvasKit.currentContext`. Existing calls can be deleted.
+
+### Changed
+ - CanvasKit APIs now handle switching between WebGL contexts automatically.
+ - Reduced overhead when switching between WebGL contexts.
+
+### Type Changes (index.d.ts)
+ - `Canvas.drawImage*` calls are correctly documented as accepting an optional `Paint` or null.
+
+## [0.29.0] - 2021-08-06
+
+### Added
+ - `Path.makeAsWinding` has been added to convert paths with an EvenOdd FillType to the
+   equivalent area using the Winding FillType.
+
+### Breaking
+ - `Paint.getBlendMode()` has been removed.
+ - `Canvas.drawImageAtCurrentFrame()` has been removed.
+ - FilterQuality enum removed -- pass `FilterOptions` | `CubicResampler` instead.
+
+### Type Changes (index.d.ts)
+ - Replaced all `object` with actual types, including `AnimationMarker`.
+
+## [0.28.1] - 2021-06-28
+
+### Added
+ - `Typeface.MakeFreeTypeFaceFromData` as a more convenient way to create a Typeface from the bytes
+   of a .ttf, .woff, or .woff2 file.
+ - `Typeface.getGlyphIDs` - provides the same functionality as `Font.getGlyphIDs`.
+
+### Changed
+ - ICU has been updated from v65 to v69.
+ - Freetype has been updated from f9350be to ff40776.
+
+### Fixed
+ - We should no longer have to decode the same font multiple times (skbug.com/12112)
+ - `Font.getGlyphIDs` had the wrong type for the third argument. It is now correctly a Uint16Array.
+
+### Deprecated
+ - `FontMgr.MakeTypefaceFromData` will be removed in favor of `Typeface.MakeFreeTypeFaceFromData`
+ - `FontMgr.RefDefault` will be removed in an upcoming version. It's only real use was
+   for `FontMgr.MakeTypefaceFromData`.
+
+## [0.28.0] - 2021-06-17
+
+### Added
+ - `Surface.makeImageFromTexture` and `Surface.makeImageFromTextureSource` as easy ways to provide
+   CanvasKit with a WebGL texture and interact with WebGL texture sources (e.g. &lt;video&gt;)
+
+### Changed
+ - We now build/ship with emscripten 2.0.20.
+
+### Breaking
+ - `Path.toCmds()` returns a flattened Float32Array instead of a 2D Array.
+ - `Canvaskit.Path.MakeFromCmds` no longer accepts a 2D Array. Inputs must be flattened,
+   but can be an array, a TypedArray, or a MallocObj.
+ - `CanvasKit.*Builder` have all been removed. Clients should use Malloc instead.
+
+### Removed
+ - `CanvasKit.Shader.MakeLerp`, the same effect can be easily generated with `RuntimeEffect`
+
+### Known Bugs
+ - On legacy (non-ANGLE) SwiftShader, certain paths that require tessellation may not be drawn
+   correctly when using a WebGL-backed surface. (skbug.com/11965)
+
+## [0.27.0] - 2021-05-20
+
+### Added
+ - `Font.getGlyphIntercepts()`
+ 
+### Fixed
+ - Bug with images using certain exif metadata. (skbug.com/11968)
+
+### Removed
+ - `Canvas.flush`, which had been previously deprecated. `Surface.flush` is the preferred method.
+ - `AnimatedImage.getCurrentFrame`, which had been previously deprecated.
+   `AnimatedImage.makeImageAtCurrentFrame` is the replacement, which behaves exactly the same.
+
+## [0.26.0] - 2021-04-23
+
+### Added
+ - Add 'isEmbolden, setEmbolden' to 'Font'
+ - Add 'drawGlyphs' to 'Canvas'
+ - Add `drawPatch` to `Canvas`.
+ - Add `Strut` as a `RectHeightStyle` enum.
+ - `CanvasKit.RuntimeEffect` now supports integer uniforms in the SkSL. These are still passed
+   to `RuntimeEffect.makeShader` as floats (like all other uniforms), and will be converted to
+   integers internally, to match the expectations of the shader.
+ - Add 'halfLeading' to `TextStyle` and `StrutStyle`.
+ - `ParagraphStyle` now accepts textHeightBehavior.
+
+### Removed
+ - `Picture.saveAsFile()`, in favor of `Picture.serialize()` where clients can control how to
+    store/encode the bytes.
+
+## [0.25.1] - 2021-03-30
+
 ### Added
  - Skottie accessors for dynamic text properties (text string, font size).
  - Optional sampling parameter to drawAtlas (paint filter-quality is ignored/deprecated)
+
+### Fixed
+ - Fonts should not be leaked https://bugs.chromium.org/p/skia/issues/detail?id=11778
 
 ## [0.25.0] - 2021-03-02
 
