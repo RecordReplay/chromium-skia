@@ -15,18 +15,13 @@
 #include "include/core/SkTypeface.h"
 #include "include/private/SkMutex.h"
 #include "include/private/SkTemplates.h"
-<<<<<<< HEAD
-#include "src/core/SkGlyphRunPainter.h"
-#include "src/core/SkRecordReplay.h"
-||||||| 7d8cdd5b7f
-#include "src/core/SkGlyphRunPainter.h"
-=======
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
 #include "src/core/SkScalerCache.h"
 
 #if SK_SUPPORT_GPU
 #include "src/text/gpu/StrikeCache.h"
 #endif
+
+#include "src/core/SkRecordReplay.h"
 
 bool gSkUseThreadLocalStrikeCaches_IAcknowledgeThisIsIncrediblyExperimental = false;
 
@@ -39,27 +34,13 @@ SkStrikeCache* SkStrikeCache::GlobalStrikeCache() {
     return cache;
 }
 
-<<<<<<< HEAD
-auto SkStrikeCache::findOrCreateStrike(const SkDescriptor& desc,
-                                       const SkScalerContextEffects& effects,
-                                       const SkTypeface& typeface) -> sk_sp<Strike> {
-    SkAutoMutexExclusive ac(fLock);
-    sk_sp<Strike> strike = this->internalFindStrikeOrNull(desc);
-
-    // https://linear.app/replay/issue/RUN-845
-    SkRecordReplayAssert("SkStrikeCache::findOrCreateStrike #1 %u %d", desc.getChecksum(), !!strike);
-
-||||||| 7d8cdd5b7f
-auto SkStrikeCache::findOrCreateStrike(const SkDescriptor& desc,
-                                       const SkScalerContextEffects& effects,
-                                       const SkTypeface& typeface) -> sk_sp<Strike> {
-    SkAutoSpinlock ac(fLock);
-    sk_sp<Strike> strike = this->internalFindStrikeOrNull(desc);
-=======
 auto SkStrikeCache::findOrCreateStrike(const SkStrikeSpec& strikeSpec) -> sk_sp<SkStrike> {
     SkAutoMutexExclusive ac(fLock);
     sk_sp<SkStrike> strike = this->internalFindStrikeOrNull(strikeSpec.descriptor());
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
+
+    // https://linear.app/replay/issue/RUN-845
+    SkRecordReplayAssert("SkStrikeCache::findOrCreateStrike #1 %u %d", strikeSpec.descriptor().getChecksum(), !!strike);
+
     if (strike == nullptr) {
         strike = this->internalCreateStrike(strikeSpec);
     }
@@ -177,16 +158,8 @@ sk_sp<SkStrike> SkStrikeCache::createStrike(
         const SkStrikeSpec& strikeSpec,
         SkFontMetrics* maybeMetrics,
         std::unique_ptr<SkStrikePinner> pinner) {
-<<<<<<< HEAD
-    SkAutoMutexExclusive ac(fLock);
-    return this->internalCreateStrike(desc, std::move(scaler), maybeMetrics, std::move(pinner));
-||||||| 7d8cdd5b7f
-    SkAutoSpinlock ac(fLock);
-    return this->internalCreateStrike(desc, std::move(scaler), maybeMetrics, std::move(pinner));
-=======
     SkAutoMutexExclusive ac(fLock);
     return this->internalCreateStrike(strikeSpec, maybeMetrics, std::move(pinner));
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
 }
 
 auto SkStrikeCache::internalCreateStrike(
@@ -247,16 +220,8 @@ int SkStrikeCache::setCacheCountLimit(int newCount) {
     return prevCount;
 }
 
-<<<<<<< HEAD
-void SkStrikeCache::forEachStrike(std::function<void(const Strike&)> visitor) const {
-    SkAutoMutexExclusive ac(fLock);
-||||||| 7d8cdd5b7f
-void SkStrikeCache::forEachStrike(std::function<void(const Strike&)> visitor) const {
-    SkAutoSpinlock ac(fLock);
-=======
 void SkStrikeCache::forEachStrike(std::function<void(const SkStrike&)> visitor) const {
     SkAutoMutexExclusive ac(fLock);
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
 
     this->validate();
 

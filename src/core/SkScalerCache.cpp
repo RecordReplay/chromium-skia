@@ -13,14 +13,11 @@
 #include "include/core/SkTypeface.h"
 #include "src/core/SkDistanceFieldGen.h"
 #include "src/core/SkEnumerate.h"
-<<<<<<< HEAD
-#include "src/core/SkRecordReplay.h"
-||||||| 7d8cdd5b7f
-=======
 #include "src/core/SkGlyphBuffer.h"
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
 #include "src/core/SkScalerContext.h"
 #include "src/text/StrikeForGPU.h"
+
+#include "src/core/SkRecordReplay.h"
 
 static SkFontMetrics use_or_generate_metrics(
         const SkFontMetrics* metrics, SkScalerContext* context) {
@@ -59,17 +56,11 @@ std::tuple<SkGlyphDigest, size_t> SkScalerCache::digest(SkPackedGlyphID packedGl
         return {*digest, 0};
     }
 
-<<<<<<< HEAD
-    SkGlyph* glyph = fAlloc.make<SkGlyph>(fScalerContext->makeGlyph(packedGlyphID));
+    SkGlyph* glyph = fAlloc.make<SkGlyph>(fScalerContext->makeGlyph(packedGlyphID, &fAlloc));
 
     // https://linear.app/replay/issue/RUN-480
     SkRecordReplayAssert("SkScalerCache::digest #2");
 
-||||||| 7d8cdd5b7f
-    SkGlyph* glyph = fAlloc.make<SkGlyph>(fScalerContext->makeGlyph(packedGlyphID));
-=======
-    SkGlyph* glyph = fAlloc.make<SkGlyph>(fScalerContext->makeGlyph(packedGlyphID, &fAlloc));
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
     return {this->addGlyph(glyph), sizeof(SkGlyph)};
 }
 
@@ -265,17 +256,11 @@ std::tuple<SkScalar, size_t> SkScalerCache::findMaximumGlyphDimension(
 template <typename Fn>
 size_t SkScalerCache::commonFilterLoop(SkDrawableGlyphBuffer* accepted, Fn&& fn) {
     size_t total = 0;
-<<<<<<< HEAD
-    for (auto [i, packedID, pos] : SkMakeEnumerate(drawables->input())) {
+    for (auto [i, packedID, pos] : SkMakeEnumerate(accepted->input())) {
         // https://linear.app/replay/issue/RUN-480
         SkRecordReplayAssert("SkScalerCache::commonFilterLoop #2 %d %d %d",
                              i, packedID, SkScalarsAreFinite(pos.x(), pos.y()));
 
-||||||| 7d8cdd5b7f
-    for (auto [i, packedID, pos] : SkMakeEnumerate(drawables->input())) {
-=======
-    for (auto [i, packedID, pos] : SkMakeEnumerate(accepted->input())) {
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
         if (SkScalarsAreFinite(pos.x(), pos.y())) {
             auto [digest, size] = this->digest(packedID);
             total += size;

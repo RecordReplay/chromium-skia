@@ -208,7 +208,6 @@ void SkFont::getWidthsBounds(const SkGlyphID glyphIDs[],
                              SkScalar widths[],
                              SkRect bounds[],
                              const SkPaint* paint) const {
-<<<<<<< HEAD
     // https://linear.app/replay/issue/RUN-480
     SkRecordReplayAssert("SkFont::getWidthsBounds %d", count);
 
@@ -217,12 +216,7 @@ void SkFont::getWidthsBounds(const SkGlyphID glyphIDs[],
       SkRecordReplayAssert("SkFont::getWidthsBounds #1 %d %d", i, glyphIDs[i]);
     }
 
-    SkStrikeSpec strikeSpec = SkStrikeSpec::MakeCanonicalized(*this, paint);
-||||||| 7d8cdd5b7f
-    SkStrikeSpec strikeSpec = SkStrikeSpec::MakeCanonicalized(*this, paint);
-=======
     auto [strikeSpec, strikeToSourceScale] = SkStrikeSpec::MakeCanonicalized(*this, paint);
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
     SkBulkGlyphMetrics metrics{strikeSpec};
     SkSpan<const SkGlyph*> glyphs = metrics.glyphs(SkSpan(glyphIDs, count));
 

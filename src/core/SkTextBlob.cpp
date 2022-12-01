@@ -917,15 +917,10 @@ int get_glyph_run_intercepts(const sktext::GlyphRun& glyphRun,
 
 int SkTextBlob::getIntercepts(const SkScalar bounds[2], SkScalar intervals[],
                               const SkPaint* paint) const {
-<<<<<<< HEAD
     // https://linear.app/replay/issue/RUN-757
     SkRecordReplayAssert("SkTextBlob::getIntercepts Start %.2f %.2f",
                          bounds[1], bounds[2]);
 
-||||||| 7d8cdd5b7f
-
-=======
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
     SkTLazy<SkPaint> defaultPaint;
     if (paint == nullptr) {
         defaultPaint.init();

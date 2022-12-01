@@ -11,23 +11,15 @@
 #include <unordered_map>
 #include <unordered_set>
 
-<<<<<<< HEAD
-#include "include/private/SkMutex.h"
-||||||| 7d8cdd5b7f
-=======
 #include "include/core/SkDrawable.h"
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
 #include "include/private/SkSpinlock.h"
 #include "include/private/SkTemplates.h"
 #include "src/core/SkDescriptor.h"
 #include "src/core/SkScalerCache.h"
-<<<<<<< HEAD
-#include "src/core/SkRecordReplay.h"
-||||||| 7d8cdd5b7f
-=======
 #include "src/core/SkStrikeSpec.h"
 #include "src/text/StrikeForGPU.h"
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
+
+#include "src/core/SkRecordReplay.h"
 
 class SkTraceMemoryDump;
 class SkStrikeCache;
@@ -221,222 +213,6 @@ class SkStrikeCache final : public sktext::StrikeForGPUCacheInterface {
 public:
     SkStrikeCache() : fLock("SkStrikeCache.fLock") {}
 
-<<<<<<< HEAD
-    class Strike final : public SkRefCnt, public SkStrikeForGPU {
-    public:
-        Strike(SkStrikeCache* strikeCache,
-               const SkDescriptor& desc,
-               std::unique_ptr<SkScalerContext> scaler,
-               const SkFontMetrics* metrics,
-               std::unique_ptr<SkStrikePinner> pinner)
-                : fStrikeCache{strikeCache}
-                , fScalerCache{desc, std::move(scaler), metrics}
-                , fPinner{std::move(pinner)} {
-          SkRecordReplayRegisterPointer(this);
-        }
-
-        ~Strike() {
-          SkRecordReplayUnregisterPointer(this);
-        }
-
-        SkGlyph* mergeGlyphAndImage(SkPackedGlyphID toID, const SkGlyph& from) {
-            auto [glyph, increase] = fScalerCache.mergeGlyphAndImage(toID, from);
-            this->updateDelta(increase);
-            return glyph;
-        }
-
-        const SkPath* mergePath(SkGlyph* glyph, const SkPath* path) {
-            auto [glyphPath, increase] = fScalerCache.mergePath(glyph, path);
-            this->updateDelta(increase);
-            return glyphPath;
-        }
-
-        SkScalerContext* getScalerContext() const {
-            return fScalerCache.getScalerContext();
-        }
-
-        void findIntercepts(const SkScalar bounds[2], SkScalar scale, SkScalar xPos,
-                            SkGlyph* glyph, SkScalar* array, int* count) {
-            fScalerCache.findIntercepts(bounds, scale, xPos, glyph, array, count);
-        }
-
-        const SkFontMetrics& getFontMetrics() const {
-            return fScalerCache.getFontMetrics();
-        }
-
-        SkSpan<const SkGlyph*> metrics(SkSpan<const SkGlyphID> glyphIDs,
-                                       const SkGlyph* results[]) {
-            auto [glyphs, increase] = fScalerCache.metrics(glyphIDs, results);
-            this->updateDelta(increase);
-            return glyphs;
-        }
-
-        SkSpan<const SkGlyph*> preparePaths(SkSpan<const SkGlyphID> glyphIDs,
-                                            const SkGlyph* results[]) {
-            auto [glyphs, increase] = fScalerCache.preparePaths(glyphIDs, results);
-            this->updateDelta(increase);
-            return glyphs;
-        }
-
-        SkSpan<const SkGlyph*> prepareImages(SkSpan<const SkPackedGlyphID> glyphIDs,
-                                             const SkGlyph* results[]) {
-            auto [glyphs, increase] = fScalerCache.prepareImages(glyphIDs, results);
-            this->updateDelta(increase);
-            return glyphs;
-        }
-
-        void prepareForDrawingMasksCPU(SkDrawableGlyphBuffer* drawables) {
-            size_t increase = fScalerCache.prepareForDrawingMasksCPU(drawables);
-            this->updateDelta(increase);
-        }
-
-        const SkGlyphPositionRoundingSpec& roundingSpec() const override {
-            return fScalerCache.roundingSpec();
-        }
-
-        const SkDescriptor& getDescriptor() const override {
-            return fScalerCache.getDescriptor();
-        }
-
-        void prepareForMaskDrawing(
-                SkDrawableGlyphBuffer* drawbles, SkSourceGlyphBuffer* rejects) override {
-            size_t increase = fScalerCache.prepareForMaskDrawing(drawbles, rejects);
-            this->updateDelta(increase);
-        }
-
-        void prepareForSDFTDrawing(
-                SkDrawableGlyphBuffer* drawbles, SkSourceGlyphBuffer* rejects) override {
-            size_t increase = fScalerCache.prepareForSDFTDrawing(drawbles, rejects);
-            this->updateDelta(increase);
-        }
-
-        void prepareForPathDrawing(
-                SkDrawableGlyphBuffer* drawbles, SkSourceGlyphBuffer* rejects) override {
-            size_t increase = fScalerCache.prepareForPathDrawing(drawbles, rejects);
-            this->updateDelta(increase);
-        }
-
-        void onAboutToExitScope() override {
-            this->unref();
-        }
-
-        void updateDelta(size_t increase);
-
-        SkStrikeCache* const            fStrikeCache;
-        Strike*                         fNext{nullptr};
-        Strike*                         fPrev{nullptr};
-        SkScalerCache                   fScalerCache;
-        std::unique_ptr<SkStrikePinner> fPinner;
-        size_t                          fMemoryUsed{sizeof(SkScalerCache)};
-        bool                            fRemoved{false};
-    };  // Strike
-
-||||||| 7d8cdd5b7f
-    class Strike final : public SkRefCnt, public SkStrikeForGPU {
-    public:
-        Strike(SkStrikeCache* strikeCache,
-               const SkDescriptor& desc,
-               std::unique_ptr<SkScalerContext> scaler,
-               const SkFontMetrics* metrics,
-               std::unique_ptr<SkStrikePinner> pinner)
-                : fStrikeCache{strikeCache}
-                , fScalerCache{desc, std::move(scaler), metrics}
-                , fPinner{std::move(pinner)} {}
-
-        SkGlyph* mergeGlyphAndImage(SkPackedGlyphID toID, const SkGlyph& from) {
-            auto [glyph, increase] = fScalerCache.mergeGlyphAndImage(toID, from);
-            this->updateDelta(increase);
-            return glyph;
-        }
-
-        const SkPath* mergePath(SkGlyph* glyph, const SkPath* path) {
-            auto [glyphPath, increase] = fScalerCache.mergePath(glyph, path);
-            this->updateDelta(increase);
-            return glyphPath;
-        }
-
-        SkScalerContext* getScalerContext() const {
-            return fScalerCache.getScalerContext();
-        }
-
-        void findIntercepts(const SkScalar bounds[2], SkScalar scale, SkScalar xPos,
-                            SkGlyph* glyph, SkScalar* array, int* count) {
-            fScalerCache.findIntercepts(bounds, scale, xPos, glyph, array, count);
-        }
-
-        const SkFontMetrics& getFontMetrics() const {
-            return fScalerCache.getFontMetrics();
-        }
-
-        SkSpan<const SkGlyph*> metrics(SkSpan<const SkGlyphID> glyphIDs,
-                                       const SkGlyph* results[]) {
-            auto [glyphs, increase] = fScalerCache.metrics(glyphIDs, results);
-            this->updateDelta(increase);
-            return glyphs;
-        }
-
-        SkSpan<const SkGlyph*> preparePaths(SkSpan<const SkGlyphID> glyphIDs,
-                                            const SkGlyph* results[]) {
-            auto [glyphs, increase] = fScalerCache.preparePaths(glyphIDs, results);
-            this->updateDelta(increase);
-            return glyphs;
-        }
-
-        SkSpan<const SkGlyph*> prepareImages(SkSpan<const SkPackedGlyphID> glyphIDs,
-                                             const SkGlyph* results[]) {
-            auto [glyphs, increase] = fScalerCache.prepareImages(glyphIDs, results);
-            this->updateDelta(increase);
-            return glyphs;
-        }
-
-        void prepareForDrawingMasksCPU(SkDrawableGlyphBuffer* drawables) {
-            size_t increase = fScalerCache.prepareForDrawingMasksCPU(drawables);
-            this->updateDelta(increase);
-        }
-
-        const SkGlyphPositionRoundingSpec& roundingSpec() const override {
-            return fScalerCache.roundingSpec();
-        }
-
-        const SkDescriptor& getDescriptor() const override {
-            return fScalerCache.getDescriptor();
-        }
-
-        void prepareForMaskDrawing(
-                SkDrawableGlyphBuffer* drawbles, SkSourceGlyphBuffer* rejects) override {
-            size_t increase = fScalerCache.prepareForMaskDrawing(drawbles, rejects);
-            this->updateDelta(increase);
-        }
-
-        void prepareForSDFTDrawing(
-                SkDrawableGlyphBuffer* drawbles, SkSourceGlyphBuffer* rejects) override {
-            size_t increase = fScalerCache.prepareForSDFTDrawing(drawbles, rejects);
-            this->updateDelta(increase);
-        }
-
-        void prepareForPathDrawing(
-                SkDrawableGlyphBuffer* drawbles, SkSourceGlyphBuffer* rejects) override {
-            size_t increase = fScalerCache.prepareForPathDrawing(drawbles, rejects);
-            this->updateDelta(increase);
-        }
-
-        void onAboutToExitScope() override {
-            this->unref();
-        }
-
-        void updateDelta(size_t increase);
-
-        SkStrikeCache* const            fStrikeCache;
-        Strike*                         fNext{nullptr};
-        Strike*                         fPrev{nullptr};
-        SkScalerCache                   fScalerCache;
-        std::unique_ptr<SkStrikePinner> fPinner;
-        size_t                          fMemoryUsed{sizeof(SkScalerCache)};
-        bool                            fRemoved{false};
-    };  // Strike
-
-=======
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
     static SkStrikeCache* GlobalStrikeCache();
 
     sk_sp<SkStrike> findStrike(const SkDescriptor& desc) SK_EXCLUDES(fLock);
@@ -490,19 +266,9 @@ private:
 
     void forEachStrike(std::function<void(const SkStrike&)> visitor) const SK_EXCLUDES(fLock);
 
-<<<<<<< HEAD
-    mutable SkMutex fLock;
-    Strike* fHead SK_GUARDED_BY(fLock) {nullptr};
-    Strike* fTail SK_GUARDED_BY(fLock) {nullptr};
-||||||| 7d8cdd5b7f
-    mutable SkSpinlock fLock;
-    Strike* fHead SK_GUARDED_BY(fLock) {nullptr};
-    Strike* fTail SK_GUARDED_BY(fLock) {nullptr};
-=======
     mutable SkMutex fLock;
     SkStrike* fHead SK_GUARDED_BY(fLock) {nullptr};
     SkStrike* fTail SK_GUARDED_BY(fLock) {nullptr};
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
     struct StrikeTraits {
         static const SkDescriptor& GetKey(const sk_sp<SkStrike>& strike) {
             return strike->getDescriptor();

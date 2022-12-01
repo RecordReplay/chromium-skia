@@ -541,15 +541,6 @@ bool SkFontConfigInterfaceDirect::isValidPattern(FcPattern* pattern) {
         gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern #2");
         return false;
     }
-<<<<<<< HEAD
-    UniqueFCConfig fcConfig(FcConfigReference(nullptr));
-    const char* sysroot = (const char*)FcConfigGetSysRoot(fcConfig.get());
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern sysroot %s",
-                        sysroot ? sysroot : "<null>");
-||||||| 7d8cdd5b7f
-    UniqueFCConfig fcConfig(FcConfigReference(nullptr));
-    const char* sysroot = (const char*)FcConfigGetSysRoot(fcConfig.get());
-=======
 
     FcConfig* fc = fFC;
     UniqueFCConfig fcStorage;
@@ -559,7 +550,6 @@ bool SkFontConfigInterfaceDirect::isValidPattern(FcPattern* pattern) {
     }
 
     const char* sysroot = (const char*)FcConfigGetSysRoot(fc);
->>>>>>> 3a990bac0bd53e13f105914a7ab0f657398719aa
     SkString resolvedFilename;
     if (sysroot) {
         resolvedFilename = sysroot;
