@@ -13,6 +13,8 @@
 #include "include/private/SkTo.h"
 #include "src/core/SkOpts.h"
 
+#include "src/core/SkRecordReplay.h"
+
 std::unique_ptr<SkDescriptor> SkDescriptor::Alloc(size_t length) {
     SkASSERT(SkAlign4(length) == length);
     void* allocation = ::operator new (length);
