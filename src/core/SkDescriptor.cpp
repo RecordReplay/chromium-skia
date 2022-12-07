@@ -29,6 +29,10 @@ void* SkDescriptor::addEntry(uint32_t tag, size_t length, const void* data) {
     SkASSERT(SkAlign4(length) == length);
     SkASSERT(this->findEntry(tag, nullptr) == nullptr);
 
+    // https://linear.app/replay/issue/RUN-845
+    SkRecordReplayAssert("SkDescriptor::addEntry %u %zu %u",
+                         tag, length, SkOpts::hash(data, length));
+
     Entry* entry = (Entry*)((char*)this + fLength);
     entry->fTag = tag;
     entry->fLen = SkToU32(length);
