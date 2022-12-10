@@ -11,10 +11,6 @@
 #include "include/private/SkOnce.h"
 #include "src/core/SkFontDescriptor.h"
 
-namespace gfx {
-  extern void FontDiagnostic(const char* format, ...);
-}
-
 class SkFontStyle;
 class SkTypeface;
 
@@ -78,7 +74,6 @@ protected:
         return nullptr;
     }
     sk_sp<SkTypeface> onLegacyMakeTypeface(const char [], SkFontStyle) const override {
-        gfx::FontDiagnostic("SkEmptyFontMgr::onLegacyMakeTypeface");
         return nullptr;
     }
 };

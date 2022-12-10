@@ -22,10 +22,6 @@
 #include <limits>
 #include <memory>
 
-namespace gfx {
-  extern void FontDiagnostic(const char* format, ...);
-}
-
 class SkData;
 
 SkTypeface_Custom::SkTypeface_Custom(const SkFontStyle& style, bool isFixedPitch,
@@ -271,8 +267,6 @@ sk_sp<SkTypeface> SkFontMgr_Custom::onMakeFromFile(const char path[], int ttcInd
 
 sk_sp<SkTypeface> SkFontMgr_Custom::onLegacyMakeTypeface(const char familyName[],
                                                          SkFontStyle style) const {
-    gfx::FontDiagnostic("SkFontMgr_Custom::onLegacyMakeTypeface");
-
     sk_sp<SkTypeface> tf;
 
     if (familyName) {
