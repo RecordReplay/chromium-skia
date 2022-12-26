@@ -24,8 +24,8 @@ static MemoryPool*& memory_pool_location() {
   static pthread_key_t key;
   if (!key) {
     int rv = pthread_key_create(&key, nullptr);
-    CHECK(rv == 0);
-    CHECK(key);
+    SkASSERT_RELEASE(rv == 0);
+    SkASSERT_RELEASE(key);
   }
 
   MemoryPool** v = (MemoryPool**)pthread_getspecific(key);
