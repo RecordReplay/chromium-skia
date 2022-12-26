@@ -18,14 +18,30 @@
 
 namespace SkSL {
 
-static thread_local MemoryPool* sMemPool = nullptr;
+//static thread_local MemoryPool* sMemPool = nullptr;
+
+static MemoryPool*& memory_pool_location() {
+  static pthread_key_t key;
+  if (!key) {
+    int rv = pthread_key_create(&key, nullptr);
+    CHECK(rv == 0);
+    CHECK(key);
+  }
+
+  MemoryPool** v = (MemoryPool**)pthread_getspecific(key);
+  if (!v) {
+    v = new MemoryPool*(nullptr);
+    pthread_setspecific(key, v);
+  }
+  return *v;
+}
 
 static MemoryPool* get_thread_local_memory_pool() {
-    return sMemPool;
+    return memory_pool_location();
 }
 
 static void set_thread_local_memory_pool(MemoryPool* memPool) {
-    sMemPool = memPool;
+    memory_pool_location() = memPool;
 }
 
 Pool::~Pool() {
