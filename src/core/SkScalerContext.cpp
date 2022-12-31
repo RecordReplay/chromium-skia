@@ -35,6 +35,8 @@
 #include "src/utils/SkMatrix22.h"
 #include <new>
 
+#include "src/core/SkRecordReplay.h"
+
 ///////////////////////////////////////////////////////////////////////////////
 
 namespace {
