@@ -40,7 +40,7 @@ void* SkDescriptor::addEntry(uint32_t tag, size_t length, const void* data) {
     SkASSERT(this->findEntry(tag, nullptr) == nullptr);
 
     // https://linear.app/replay/issue/RUN-845
-    SkRecordReplayAssert("SkDescriptor::addEntry %u %zu %u",
+    SkRecordReplayAssert("[RUN-845] SkDescriptor::addEntry %u %zu %u",
                          tag, length, (data && length) ? SkOpts::hash(data, length) : 0);
 
     Entry* entry = (Entry*)((char*)this + fLength);
