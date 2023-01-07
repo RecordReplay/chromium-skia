@@ -13,7 +13,8 @@
 #include "include/core/SkTypes.h"
 #include "include/gpu/GrDriverBugWorkarounds.h"
 #include "include/gpu/GrTypes.h"
-#include "include/private/GrTypesPriv.h"
+#include "include/gpu/ShaderErrorHandler.h"
+#include "include/private/gpu/ganesh/GrTypesPriv.h"
 
 #include <vector>
 
@@ -70,22 +71,7 @@ struct SK_API GrContextOptions {
         PersistentCache& operator=(const PersistentCache&) = delete;
     };
 
-    /**
-     * Abstract class to report errors when compiling shaders. If fShaderErrorHandler is present,
-     * it will be called to report any compilation failures. Otherwise, failures will be reported
-     * via SkDebugf and asserts.
-     */
-    class SK_API ShaderErrorHandler {
-    public:
-        virtual ~ShaderErrorHandler() = default;
-
-        virtual void compileError(const char* shader, const char* errors) = 0;
-
-    protected:
-        ShaderErrorHandler() = default;
-        ShaderErrorHandler(const ShaderErrorHandler&) = delete;
-        ShaderErrorHandler& operator=(const ShaderErrorHandler&) = delete;
-    };
+    using ShaderErrorHandler = skgpu::ShaderErrorHandler;
 
     GrContextOptions() {}
 
@@ -184,19 +170,15 @@ struct SK_API GrContextOptions {
     bool fAvoidStencilBuffers = false;
 
     /**
-     * If true, texture fetches from mip-mapped textures will be biased to read larger MIP levels.
-     * This has the effect of sharpening those textures, at the cost of some aliasing, and possible
-     * performance impact.
-     */
-    bool fSharpenMipmappedTextures = false;
-
-    /**
      * Enables driver workaround to use draws instead of HW clears, e.g. glClear on the GL backend.
      */
     Enable fUseDrawInsteadOfClear = Enable::kDefault;
 
     /**
-     * Experimental: Allow Ganesh to more aggressively reorder operations.
+     * Allow Ganesh to more aggressively reorder operations to reduce the number of render passes.
+     * Offscreen draws will be done upfront instead of interrupting the main render pass when
+     * possible. May increase VRAM usage, but still observes the resource cache limit.
+     * Enabled by default.
      */
     Enable fReduceOpsTaskSplitting = Enable::kDefault;
 
@@ -239,8 +221,8 @@ struct SK_API GrContextOptions {
     ShaderErrorHandler* fShaderErrorHandler = nullptr;
 
     /**
-     * Specifies the number of samples Ganesh should use when performing internal draws with MSAA or
-     * mixed samples (hardware capabilities permitting).
+     * Specifies the number of samples Ganesh should use when performing internal draws with MSAA
+     * (hardware capabilities permitting).
      *
      * If 0, Ganesh will disable internal code paths that use multisampling.
      */
@@ -264,8 +246,32 @@ struct SK_API GrContextOptions {
 
     /**
      * If true, and if supported, enables hardware tessellation in the caps.
+     * DEPRECATED: This value is ignored; experimental hardware tessellation is always disabled.
      */
     bool fEnableExperimentalHardwareTessellation = false;
+
+    /**
+     * If true, then add 1 pixel padding to all glyph masks in the atlas to support bi-lerp
+     * rendering of all glyphs. This must be set to true to use Slugs.
+     */
+    #if defined(SK_EXPERIMENTAL_SIMULATE_DRAWGLYPHRUNLIST_WITH_SLUG) || \
+        defined(SK_EXPERIMENTAL_SIMULATE_DRAWGLYPHRUNLIST_WITH_SLUG_SERIALIZE) || \
+        defined(SK_EXPERIMENTAL_SIMULATE_DRAWGLYPHRUNLIST_WITH_SLUG_STRIKE_SERIALIZE)
+    bool fSupportBilerpFromGlyphAtlas = true;
+    #else
+    bool fSupportBilerpFromGlyphAtlas = false;
+    #endif
+
+    /**
+     * Uses a reduced variety of shaders. May perform less optimally in steady state but can reduce
+     * jank due to shader compilations.
+     */
+    bool fReducedShaderVariations = false;
+
+    /**
+     * If true, then allow to enable MSAA on new Intel GPUs.
+     */
+    bool fAllowMSAAOnNewIntel = false;
 
 #if GR_TEST_UTILS
     /**
@@ -273,20 +279,26 @@ struct SK_API GrContextOptions {
      */
 
     /**
+     * Testing-only mode to exercise allocation failures in the flush-time callback objects.
+     * For now it only simulates allocation failure during the preFlush callback.
+     */
+    bool fFailFlushTimeCallbacks = false;
+
+    /**
      * Prevents use of dual source blending, to test that all xfer modes work correctly without it.
      */
     bool fSuppressDualSourceBlending = false;
 
     /**
-     * If true, the caps will never support geometry shaders.
+     * Prevents the use of non-coefficient-based blend equations, for testing dst reads, barriers,
+     * and in-shader blending.
      */
-    bool fSuppressGeometryShaders = false;
+    bool fSuppressAdvancedBlendEquations = false;
 
     /**
-     * If greater than zero and less than the actual hardware limit, overrides the maximum number of
-     * tessellation segments supported by the caps.
+     * Prevents the use of framebuffer fetches, for testing dst reads and texture barriers.
      */
-    int  fMaxTessellationSegmentsOverride = 0;
+    bool fSuppressFramebufferFetch = false;
 
     /**
      * If true, then all paths are processed as if "setIsVolatile" had been called.
@@ -309,20 +321,27 @@ struct SK_API GrContextOptions {
     bool fRandomGLOOM = false;
 
     /**
-     * Force off support for write pixels row bytes in caps.
+     * Force off support for write/transfer pixels row bytes in caps.
      */
-    bool fDisallowWritePixelRowBytes = false;
-
-    /**
-     * Forces all draws to use antialiasing. This allows Ganesh to use internal multisampling
-     * as well as certain clip optimizations.
-     */
-    bool fAlwaysAntialias = false;
+    bool fDisallowWriteAndTransferPixelRowBytes = false;
 
     /**
      * Include or exclude specific GPU path renderers.
      */
     GpuPathRenderers fGpuPathRenderers = GpuPathRenderers::kDefault;
+
+    /**
+     * Specify the GPU resource cache limit. Equivalent to calling `setResourceCacheLimit` on the
+     * context at construction time.
+     *
+     * A value of -1 means use the default limit value.
+     */
+    int fResourceCacheLimitOverride = -1;
+
+    /**
+     * Maximum width and height of internal texture atlases.
+     */
+    int  fMaxTextureAtlasSize = 2048;
 #endif
 
     GrDriverBugWorkarounds fDriverBugWorkarounds;

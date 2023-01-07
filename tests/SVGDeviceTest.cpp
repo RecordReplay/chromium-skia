@@ -18,6 +18,7 @@
 #include "include/core/SkColorFilter.h"
 #include "include/core/SkData.h"
 #include "include/core/SkImage.h"
+#include "include/core/SkPathEffect.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkTextBlob.h"
@@ -173,7 +174,7 @@ DEF_TEST(SVGDevice_whitespace_pos, reporter) {
         { "\t\t  \t ab \t\t  \t cd \t\t   \t  ", "ab cd " },
     };
 
-    for (unsigned i = 0; i < SK_ARRAY_COUNT(tests); ++i) {
+    for (unsigned i = 0; i < std::size(tests); ++i) {
         test_whitespace_pos(reporter, tests[i].tst_in, tests[i].tst_out);
     }
 }
@@ -409,7 +410,7 @@ DEF_TEST(SVGDevice_textpath, reporter) {
 
     // We also use paths in the presence of path effects.
     SkScalar intervals[] = {10, 5};
-    paint.setPathEffect(SkDashPathEffect::Make(intervals, SK_ARRAY_COUNT(intervals), 0));
+    paint.setPathEffect(SkDashPathEffect::Make(intervals, std::size(intervals), 0));
     check_text(0, /*expect_path=*/true);
 }
 
@@ -567,5 +568,62 @@ DEF_TEST(SVGDevice_path_effect, reporter) {
     REPORTER_ASSERT(reporter, mCount == 3);
 }
 
+DEF_TEST(SVGDevice_relative_path_encoding, reporter) {
+    SkDOM dom;
+    {
+        auto svgCanvas = MakeDOMCanvas(&dom, SkSVGCanvas::kRelativePathEncoding_Flag);
+        SkPath path;
+        path.moveTo(100, 50);
+        path.lineTo(200, 50);
+        path.lineTo(200, 150);
+        path.close();
+
+        svgCanvas->drawPath(path, SkPaint());
+    }
+
+    const auto* rootElement = dom.finishParsing();
+    REPORTER_ASSERT(reporter, rootElement, "root element not found");
+    const auto* pathElement = dom.getFirstChild(rootElement, "path");
+    REPORTER_ASSERT(reporter, pathElement, "path element not found");
+    const auto* d = dom.findAttr(pathElement, "d");
+    REPORTER_ASSERT(reporter, !strcmp(d, "m100 50l100 0l0 100l-100 -100Z"));
+}
+
+DEF_TEST(SVGDevice_color_shader, reporter) {
+    SkDOM dom;
+    {
+        auto svgCanvas = MakeDOMCanvas(&dom);
+
+        SkPaint paint;
+        paint.setShader(SkShaders::Color(0xffffff00));
+
+        svgCanvas->drawCircle(100, 100, 100, paint);
+    }
+
+    const auto* rootElement = dom.finishParsing();
+    REPORTER_ASSERT(reporter, rootElement, "root element not found");
+    const auto* ellipseElement = dom.getFirstChild(rootElement, "ellipse");
+    REPORTER_ASSERT(reporter, ellipseElement, "ellipse element not found");
+    const auto* fill = dom.findAttr(ellipseElement, "fill");
+    REPORTER_ASSERT(reporter, fill, "fill attribute not found");
+    REPORTER_ASSERT(reporter, !strcmp(fill, "yellow"));
+}
+
+DEF_TEST(SVGDevice_parse_minmax, reporter) {
+    auto check = [&](int64_t n, bool expected) {
+        const auto str = std::to_string(n);
+
+        int val;
+        REPORTER_ASSERT(reporter, SkToBool(SkParse::FindS32(str.c_str(), &val)) == expected);
+        if (expected) {
+            REPORTER_ASSERT(reporter, val == n);
+        }
+    };
+
+    check(std::numeric_limits<int>::max(), true);
+    check(std::numeric_limits<int>::min(), true);
+    check(static_cast<int64_t>(std::numeric_limits<int>::max()) + 1, false);
+    check(static_cast<int64_t>(std::numeric_limits<int>::min()) - 1, false);
+}
 
 #endif

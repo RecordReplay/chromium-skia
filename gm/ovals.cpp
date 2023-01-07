@@ -146,7 +146,7 @@ protected:
     void onDraw(SkCanvas* canvas) override {
         SkRandom rand(1);
         canvas->translate(20 * SK_Scalar1, 20 * SK_Scalar1);
-        SkRect oval = SkRect::MakeLTRB(-20, -30, 20, 30);
+        const SkRect kOval = SkRect::MakeLTRB(-20, -30, 20, 30);
 
         const SkScalar kXStart = 60.0f;
         const SkScalar kYStart = 80.0f;
@@ -175,8 +175,8 @@ protected:
                 SkColor color = genColor(&rand);
                 fPaints[i].setColor(color);
 
-                canvas->drawRect(oval, rectPaint);
-                canvas->drawOval(oval, fPaints[i]);
+                canvas->drawRect(kOval, rectPaint);
+                canvas->drawOval(kOval, fPaints[i]);
 
                 canvas->restore();
 
@@ -254,7 +254,7 @@ protected:
         SkPoint center = SkPoint::Make(SkIntToScalar(0), SkIntToScalar(0));
         SkColor colors[] = { SK_ColorBLUE, SK_ColorRED, SK_ColorGREEN };
         SkScalar pos[] = { 0, SK_ScalarHalf, SK_Scalar1 };
-        auto shader = SkGradientShader::MakeRadial(center, 20, colors, pos, SK_ARRAY_COUNT(colors),
+        auto shader = SkGradientShader::MakeRadial(center, 20, colors, pos, std::size(colors),
                                                    SkTileMode::kClamp);
 
         for (int i = 0; i < fPaints.count(); ++i) {
@@ -268,8 +268,8 @@ protected:
             fPaints[i].setColor(color);
             fPaints[i].setShader(shader);
 
-            canvas->drawRect(oval, rectPaint);
-            canvas->drawOval(oval, fPaints[i]);
+            canvas->drawRect(kOval, rectPaint);
+            canvas->drawOval(kOval, fPaints[i]);
 
             fPaints[i].setShader(nullptr);
 

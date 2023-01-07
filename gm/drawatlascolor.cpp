@@ -124,9 +124,9 @@ protected:
             0x88000088          // transparent blue
         };
 
-        const int numModes = SK_ARRAY_COUNT(gModes);
+        const int numModes = std::size(gModes);
         SkASSERT(numModes == kNumXferModes);
-        const int numColors = SK_ARRAY_COUNT(gColors);
+        const int numColors = std::size(gColors);
         SkASSERT(numColors == kNumColors);
         SkRSXform xforms[numColors];
         SkRect rects[numColors];
@@ -165,11 +165,11 @@ protected:
     }
 
 private:
-    static constexpr int kNumXferModes = 29;
-    static constexpr int kNumColors = 4;
-    static constexpr int kAtlasSize = 30;
-    static constexpr int kPad = 2;
-    static constexpr int kTextPad = 8;
+    inline static constexpr int kNumXferModes = 29;
+    inline static constexpr int kNumColors = 4;
+    inline static constexpr int kAtlasSize = 30;
+    inline static constexpr int kPad = 2;
+    inline static constexpr int kTextPad = 8;
 
     using INHERITED = GM;
 };

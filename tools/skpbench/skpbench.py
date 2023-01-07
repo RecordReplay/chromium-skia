@@ -83,18 +83,21 @@ __argparse.add_argument('--ddlNumRecordingThreads',
   help="number of DDL recording threads (0=num_cores)")
 __argparse.add_argument('--ddlTilingWidthHeight',
   type=int, default=0, help="number of tiles along one edge when in DDL mode")
-__argparse.add_argument('--reduceOpsTaskSplitting',
-  action='store_true', help="reorder GPU tasks to reduce render target swaps")
+__argparse.add_argument('--dontReduceOpsTaskSplitting',
+  action='store_true', help="don't reorder GPU tasks to reduce render target swaps")
 __argparse.add_argument('--gpuThreads',
   type=int, default=-1,
   help="Create this many extra threads to assist with GPU work, including"
        " software path rendering. Defaults to two.")
 __argparse.add_argument('--internalSamples',
   type=int, default=-1,
-  help="Number of samples for internal draws that use MSAA or mixed samples.")
+  help="Number of samples for internal draws that use MSAA.")
 __argparse.add_argument('srcs',
   nargs='+',
   help=".skp files or directories to expand for .skp files, and/or .svg files")
+__argparse.add_argument('--gpuResourceCacheLimit',
+  type=int, default=-1,
+  help="Maximum number of bytes to use for budgeted GPU resources.")
 
 FLAGS = __argparse.parse_args()
 if FLAGS.adb:
@@ -164,8 +167,11 @@ class SKPBench:
   if FLAGS.ddlTilingWidthHeight:
     ARGV.extend(['--ddlTilingWidthHeight', str(FLAGS.ddlTilingWidthHeight)])
 
-  if FLAGS.reduceOpsTaskSplitting:
-    ARGV.extend(['--reduceOpsTaskSplitting'])
+  if FLAGS.dontReduceOpsTaskSplitting:
+    ARGV.extend(['--dontReduceOpsTaskSplitting'])
+
+  if FLAGS.gpuResourceCacheLimit:
+    ARGV.extend(['--gpuResourceCacheLimit', str(FLAGS.gpuResourceCacheLimit)])
 
   if FLAGS.adb:
     if FLAGS.device_serial is None:
@@ -177,7 +183,7 @@ class SKPBench:
   def get_header(cls, outfile=sys.stdout):
     commandline = cls.ARGV + ['--duration', '0']
     dump_commandline_if_verbose(commandline)
-    out = subprocess.check_output(commandline, stderr=subprocess.STDOUT)
+    out = subprocess.check_output(commandline, stderr=subprocess.STDOUT, encoding='utf-8')
     return out.rstrip()
 
   @classmethod
@@ -189,10 +195,10 @@ class SKPBench:
                               '--config', config,
                               '--src', 'warmup']
     dump_commandline_if_verbose(commandline)
-    output = subprocess.check_output(commandline, stderr=subprocess.STDOUT)
+    output = subprocess.check_output(commandline, stderr=subprocess.STDOUT, encoding='utf-8')
 
     # validate the warmup run output.
-    for line in output.decode('utf-8').split('\n'):
+    for line in output.split('\n'):
       match = BenchResult.match(line.rstrip())
       if match and match.bench == 'warmup':
         return

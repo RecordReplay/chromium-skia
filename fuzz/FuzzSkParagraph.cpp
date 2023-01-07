@@ -19,6 +19,7 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkScalar.h"
+#include "include/core/SkSpan.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypeface.h"
@@ -37,9 +38,7 @@
 #include "modules/skparagraph/src/TextLine.h"
 #include "modules/skparagraph/utils/TestFontCollection.h"
 #include "src/core/SkOSFile.h"
-#include "src/core/SkSpan.h"
 #include "src/utils/SkOSPath.h"
-#include "src/utils/SkShaperJSONWriter.h"
 #include "tests/Test.h"
 #include "tools/Resources.h"
 
@@ -51,6 +50,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#if defined(SK_ENABLE_PARAGRAPH)
 
 using namespace skia::textlayout;
 namespace {
@@ -280,3 +281,5 @@ DEF_FUZZ(SkParagraph, fuzz) {
     paragraph->layout(layout_width);
     paragraph->paint(&canvas, 0, 0);
 }
+
+#endif // SK_ENABLE_PARAGRAPH

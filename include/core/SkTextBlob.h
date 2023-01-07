@@ -20,6 +20,10 @@ struct SkRSXform;
 struct SkSerialProcs;
 struct SkDeserialProcs;
 
+namespace sktext {
+class GlyphRunList;
+}
+
 /** \class SkTextBlob
     SkTextBlob combines multiple text runs into an immutable container. Each text
     run consists of glyphs, SkPaint, and position. Only parts of SkPaint related to
@@ -214,6 +218,15 @@ public:
          */
         bool next(Run*);
 
+        // Experimental, DO NO USE, will change/go-away
+        struct ExperimentalRun {
+            SkFont          font;
+            int             count;
+            const uint16_t* glyphs;
+            const SkPoint*  positions;
+        };
+        bool experimentalNext(ExperimentalRun*);
+
     private:
         const RunRecord* fRunRecord;
     };
@@ -241,8 +254,7 @@ private:
         fCacheID.store(cacheID);
     }
 
-    friend class SkGlyphRunList;
-    friend class GrTextBlobCache;
+    friend class sktext::GlyphRunList;
     friend class SkTextBlobBuilder;
     friend class SkTextBlobPriv;
     friend class SkTextBlobRunIterator;

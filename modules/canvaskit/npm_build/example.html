@@ -7,13 +7,15 @@
 <style>
   canvas, img {
     border: 1px dashed #AAA;
-    width: 300px;
-    height: 300px;
+  }
+  #api5_c, #api6_c {
+      width: 300px;
+      height: 300px;
   }
 
 </style>
 
-<h2>Drop in replacement for HTML Canvas (e.g. node.js)</h2>
+<h2> Drop in replacement for HTML Canvas (e.g. node.js)</h2>
 <img id=api1 width=300 height=300>
 <canvas id=api1_c width=300 height=300></canvas>
 <img id=api2 width=300 height=300>
@@ -31,72 +33,123 @@
 <img id=api8 width=300 height=300>
 <canvas id=api8_c width=300 height=300></canvas>
 
-<h2> CanvasKit expands the functionality of a stock HTML canvas</h2>
+<h2 id=title1> CanvasKit expands the functionality of a stock HTML canvas</h2>
 <canvas id=vertex1 width=300 height=300></canvas>
 <canvas id=gradient1 width=300 height=300></canvas>
 <canvas id=patheffect width=300 height=300></canvas>
-<canvas id=paths width=200 height=200></canvas>
+<canvas id=paths width=300 height=300></canvas>
 <canvas id=pathperson width=300 height=300></canvas>
 <canvas id=ink width=300 height=300></canvas>
 <canvas id=surfaces width=300 height=300></canvas>
 <canvas id=atlas width=300 height=300></canvas>
 <canvas id=decode width=300 height=300></canvas>
 
-<h2> CanvasKit can allow for text measurement/placement (e.g. breaking, kerning)</h2>
+<h2 id=title2> CanvasKit can allow for text measurement/placement (e.g. breaking, kerning)</h2>
 <canvas id=textonpath width=300 height=300></canvas>
+<canvas id=drawGlyphs width=300 height=300></canvas>
 
-<script type="text/javascript" src="/node_modules/canvaskit/bin/canvaskit.js"></script>
+<h2 id=title3> Interactive drawPatch</h2>
+<canvas id=interdrawpatch width=512 height=512></canvas>
 
-<script type="text/javascript" charset="utf-8">
+<script type="text/javascript" src="/build/canvaskit.js"></script>
+
+<script type="text/javascript" charset="utf-8" async>
 
   var CanvasKit = null;
   var cdn = 'https://storage.googleapis.com/skia-cdn/misc/';
 
-  const ckLoaded = CanvasKitInit({locateFile: (file) => '/node_modules/canvaskit/bin/'+file});
+  const ckLoaded = CanvasKitInit({locateFile: (file) => '/build/'+file});
 
   const loadRoboto = fetch(cdn + 'Roboto-Regular.ttf').then((response) => response.arrayBuffer());
   const loadNotoSerif = fetch(cdn + 'NotoSerif-Regular.ttf').then((response) => response.arrayBuffer());
   const loadTestImage = fetch(cdn + 'test.png').then((response) => response.arrayBuffer());
 
+  async function initWebGpu(CK) {
+    if (navigator.gpu && CK.webgpu) {
+      const adapter = await navigator.gpu.requestAdapter();
+      const device = await adapter.requestDevice();
+      var gpu = CK.MakeGPUDeviceContext(device);
+      if (!gpu) {
+        console.error('Failed to initialize WebGPU device context');
+      }
+      return gpu;
+    }
+    return null;
+  }
+
+  const ready = async function() {
+    let CK = await ckLoaded;
+    let gpu = await initWebGpu(CK);
+    return [CK, gpu];
+  }();
+
   // Examples which only require canvaskit
-  ckLoaded.then((CK) => {
+  ready.then((initData) => {
+    const [CK, gpu] = initData;
+    if (gpu) {
+      let titles = ['title1', 'title2', 'title3'];
+      titles.forEach((title) => document.getElementById(title).innerText += " (using WebGPU)");
+    }
     CanvasKit = CK;
     PathExample(CanvasKit);
-    InkExample(CanvasKit);
-    PathPersonExample(CanvasKit);
-    VertexAPI1(CanvasKit);
-    GradiantAPI1(CanvasKit);
-    TextOnPathAPI1(CanvasKit);
-    SurfaceAPI1(CanvasKit);
-    CanvasAPI1(CanvasKit);
-    CanvasAPI2(CanvasKit);
-    CanvasAPI3(CanvasKit);
-    CanvasAPI4(CanvasKit);
-    CanvasAPI5(CanvasKit);
-    CanvasAPI6(CanvasKit);
-    CanvasAPI7(CanvasKit);
-    CanvasAPI8(CanvasKit);
+    InkExample(CanvasKit, gpu);
+    PathPersonExample(CanvasKit, gpu);
+    VertexAPI1(CanvasKit, gpu);
+    GradientAPI1(CanvasKit, gpu);
+    TextOnPathAPI1(CanvasKit, gpu);
+    DrawGlyphsAPI1(CanvasKit, gpu);
+    SurfaceAPI1(CanvasKit, gpu);
+    if (CanvasKit.MakeCanvas){
+      CanvasAPI1(CanvasKit);
+      CanvasAPI2(CanvasKit);
+      CanvasAPI3(CanvasKit);
+      CanvasAPI4(CanvasKit);
+      CanvasAPI5(CanvasKit);
+      CanvasAPI6(CanvasKit);
+      CanvasAPI7(CanvasKit);
+      CanvasAPI8(CanvasKit);
+    } else {
+      console.log("Skipping CanvasAPI1 because it's not compiled in");
+    }
+    InteractivePatch(CanvasKit, gpu);
   });
 
   // Examples requiring external resources
-  Promise.all([ckLoaded, loadRoboto]).then((results) => {DrawingExample(...results)});
-  Promise.all([ckLoaded, loadTestImage]).then((results) => {AtlasAPI1(...results)});
+  Promise.all([ready, loadRoboto]).then((results) => {DrawingExample(...results.flat())});
+  Promise.all([ready, loadTestImage]).then((results) => {AtlasAPI1(...results.flat())});
   Promise.all([ckLoaded, loadTestImage]).then((results) => {DecodeAPI(...results)});
 
-  function DrawingExample(CanvasKit, robotoData) {
+  // Helper function to create an optional WebGPU canvas surface, if WebGPU is supported. Falls back
+  // to CanvasKit.MakeCanvasSurface for SW/WebGL otherwise.
+  function MakeCanvasSurface(CanvasKit, gpu, canvasId) {
+    if (gpu) {
+      const canvasContext = CanvasKit.MakeGPUCanvasContext(
+          gpu, document.getElementById(canvasId));
+      if (!canvasContext) {
+        console.error('Failed to configure WebGPU canvas context');
+        return;
+      }
+      const surface = CanvasKit.MakeGPUCanvasSurface(canvasContext);
+      if (!surface) {
+        console.error('Failed to initialize current swapchain Surface');
+      }
+      return surface;
+    }
+    return CanvasKit.MakeCanvasSurface(canvasId);
+  }
+
+  function DrawingExample(CanvasKit, gpu, robotoData) {
     if (!robotoData || !CanvasKit) {
       return;
     }
-    const surface = CanvasKit.MakeCanvasSurface('patheffect');
+    const surface = MakeCanvasSurface(CanvasKit, gpu, 'patheffect');
     if (!surface) {
       console.error('Could not make surface');
       return;
     }
 
     const paint = new CanvasKit.Paint();
-
-    const fontMgr = CanvasKit.FontMgr.RefDefault();
-    const roboto = fontMgr.MakeTypefaceFromData(robotoData);
+    const roboto = CanvasKit.Typeface.MakeFreeTypeFaceFromData(robotoData);
 
     const textPaint = new CanvasKit.Paint();
     textPaint.setColor(CanvasKit.RED);
@@ -151,8 +204,119 @@
     // textFont.delete();
   }
 
-  function PathPersonExample(CanvasKit) {
-    const surface = CanvasKit.MakeSWCanvasSurface('pathperson');
+   function InteractivePatch(CanvasKit, gpu) {
+     const ELEM = 'interdrawpatch';
+     const surface = MakeCanvasSurface(CanvasKit, gpu, ELEM);
+     if (!surface) {
+       console.error('Could not make surface');
+       return;
+     }
+
+     let live_corner, live_index;
+
+     const paint = new CanvasKit.Paint();
+     const pts_paint = new CanvasKit.Paint();
+     pts_paint.setStyle(CanvasKit.PaintStyle.Stroke);
+     pts_paint.setStrokeWidth(9);
+     pts_paint.setStrokeCap(CanvasKit.StrokeCap.Round);
+
+     const line_paint = new CanvasKit.Paint();
+     line_paint.setStyle(CanvasKit.PaintStyle.Stroke);
+     line_paint.setStrokeWidth(2);
+
+     const colors = [CanvasKit.RED, CanvasKit.BLUE, CanvasKit.YELLOW, CanvasKit.CYAN];
+
+     const patch = [
+          [ 10,170,   10, 10,  170, 10],  // prev_vector, point, next_vector
+          [340, 10,  500, 10,  500,170],
+          [500,340,  500,500,  340,500],
+          [170,500,   10,500,   10,340],
+      ];
+
+      function get_corner(corner, index) {
+          return [corner[index*2+0], corner[index*2+1]];
+      }
+
+      function push_xy(array, xy) {
+          array.push(xy[0], xy[1]);
+      }
+
+      function patch_to_cubics(patch) {
+          const array = [];
+          push_xy(array, get_corner(patch[0],1));
+          push_xy(array, get_corner(patch[0],2));
+          for (let i = 1; i < 4; ++i) {
+              push_xy(array, get_corner(patch[i],0));
+              push_xy(array, get_corner(patch[i],1));
+              push_xy(array, get_corner(patch[i],2));
+          }
+          push_xy(array, get_corner(patch[0],0));
+
+          return array;
+      }
+
+     function drawFrame(canvas) {
+         const cubics = patch_to_cubics(patch);
+
+         canvas.drawColor(CanvasKit.WHITE);
+         canvas.drawPatch(cubics, colors, null, CanvasKit.BlendMode.Dst, paint);
+         if (live_corner) {
+             canvas.drawPoints(CanvasKit.PointMode.Polygon, live_corner, line_paint);
+         }
+         canvas.drawPoints(CanvasKit.PointMode.Points, cubics, pts_paint);
+         surface.requestAnimationFrame(drawFrame);
+     }
+     surface.requestAnimationFrame(drawFrame);
+
+     function length2(x, y) {
+         return x*x + y*y;
+     }
+     function hit_test(x,y, x1,y1) {
+         return length2(x-x1, y-y1) <= 10*10;
+     }
+     function pointer_up(e) {
+         live_corner = null;
+         live_index = null;
+      }
+
+     function pointer_down(e) {
+         live_corner = null;
+         live_index = null;
+         for (p of patch) {
+             for (let i = 0; i < 6; i += 2) {
+                 if (hit_test(p[i], p[i+1], e.offsetX, e.offsetY)) {
+                     live_corner = p;
+                     live_index = i;
+                 }
+             }
+         }
+      }
+
+     function pointer_move(e) {
+       if (e.pressure && live_corner) {
+           if (live_index == 2) {
+               // corner
+               const dx = e.offsetX - live_corner[2];
+               const dy = e.offsetY - live_corner[3];
+               for  (let i = 0; i < 3; ++i) {
+                   live_corner[i*2+0] += dx;
+                   live_corner[i*2+1] += dy;
+               }
+           } else {
+               // control-point
+               live_corner[live_index+0] = e.offsetX;
+               live_corner[live_index+1] = e.offsetY;
+            }
+        }
+     }
+     document.getElementById(ELEM).addEventListener('pointermove', pointer_move);
+     document.getElementById(ELEM).addEventListener('pointerdown', pointer_down);
+     document.getElementById(ELEM).addEventListener('pointerup', pointer_up);
+     preventScrolling(document.getElementById(ELEM));
+   }
+
+  function PathPersonExample(CanvasKit, gpu) {
+    const surface = MakeCanvasSurface(CanvasKit, gpu, 'pathperson');
     if (!surface) {
       console.error('Could not make surface');
       return;
@@ -243,8 +407,8 @@
     });
   }
 
-  function InkExample(CanvasKit) {
-    const surface = CanvasKit.MakeCanvasSurface('ink');
+  function InkExample(CanvasKit, gpu) {
+    const surface = MakeCanvasSurface(CanvasKit, gpu, 'ink');
     if (!surface) {
       console.error('Could not make surface');
       return;
@@ -368,8 +532,9 @@
         ctx.fillStyle = 'black';
         ctx.font = '26px Bungee';
         ctx.rotate(.1);
+        let text = ctx.measureText('Awesome');
         ctx.fillText('Awesome ', 25, 100);
-        ctx.strokeText('Groovy!', 200, 100);
+        ctx.strokeText('Groovy!', 35 + text.width, 100);
 
         // Draw line under Awesome
         ctx.strokeStyle = 'rgba(125,0,0,0.5)';
@@ -499,7 +664,7 @@
 
       ctx.translate(60, 0);
       ctx.rotate(Math.PI / 6);
-      ctx.transform(1.5, 0, 0, 0.5, 0, 0, 0); // effectively scale
+      ctx.transform(1.5, 0, 0, 0.5, 0, 0); // effectively scale
       ctx.rect(90, 10, 20, 20);
       ctx.resetTransform();
 
@@ -850,8 +1015,8 @@
     skcanvas.dispose();
   }
 
-  function VertexAPI1(CanvasKit) {
-    const surface = CanvasKit.MakeCanvasSurface('vertex1');
+  function VertexAPI1(CanvasKit, gpu) {
+    const surface = MakeCanvasSurface(CanvasKit, gpu, 'vertex1');
     if (!surface) {
       console.error('Could not make surface');
       return;
@@ -868,7 +1033,7 @@
                                             points, null, colors,
                                             false /*isVolatile*/);
 
-    canvas.drawVertices(vertices, CanvasKit.BlendMode.Src, paint);
+    canvas.drawVertices(vertices, CanvasKit.BlendMode.Dst, paint);
 
     vertices.delete();
 
@@ -889,10 +1054,11 @@
     shader.delete();
     paint.delete();
     surface.delete();
+    vertices.delete();
   }
 
-  function GradiantAPI1(CanvasKit) {
-    const surface = CanvasKit.MakeSWCanvasSurface('gradient1');
+  function GradientAPI1(CanvasKit, gpu) {
+    const surface = MakeCanvasSurface(CanvasKit, gpu, 'gradient1');
     if (!surface) {
       console.error('Could not make surface');
       return;
@@ -915,14 +1081,16 @@
     const textBlob = CanvasKit.TextBlob.MakeFromText('Radial', textFont);
 
     canvas.drawTextBlob(textBlob, 10, 200, paint);
+    surface.flush();
     paint.delete();
     textFont.delete();
     textBlob.delete();
-    surface.flush();
+    shader.delete();
+    surface.delete();
   }
 
-  function TextOnPathAPI1(CanvasKit) {
-    const surface = CanvasKit.MakeSWCanvasSurface('textonpath');
+  function TextOnPathAPI1(CanvasKit, gpu) {
+    const surface = MakeCanvasSurface(CanvasKit, gpu, 'textonpath');
     if (!surface) {
       console.error('Could not make surface');
       return;
@@ -950,6 +1118,7 @@
 
     surface.flush();
 
+    surface.delete();
     textBlob.delete();
     arc.delete();
     paint.delete();
@@ -957,13 +1126,39 @@
     fontPaint.delete();
   }
 
-  function SurfaceAPI1(CanvasKit) {
-    const surface = CanvasKit.MakeCanvasSurface('surfaces');
+  function DrawGlyphsAPI1(CanvasKit, gpu) {
+    const surface = MakeCanvasSurface(CanvasKit, gpu, 'drawGlyphs');
     if (!surface) {
       console.error('Could not make surface');
       return;
     }
-    const grContext = surface.grContext;
+    const canvas = surface.getCanvas();
+    const paint = new CanvasKit.Paint();
+    const font = new CanvasKit.Font(null, 16);
+    paint.setAntiAlias(true);
+
+    let glyphs = [];
+    let positions = [];
+    for (let i = 0; i < 256; ++i) {
+      glyphs.push(i);
+      positions.push((i % 16) * 16);
+      positions.push(Math.round(i/16) * 16);
+    }
+    canvas.drawGlyphs(glyphs, positions, 16, 20, font, paint);
+
+    surface.flush();
+
+    surface.delete();
+    paint.delete();
+    font.delete();
+  }
+
+  function SurfaceAPI1(CanvasKit, gpu) {
+    const surface = MakeCanvasSurface(CanvasKit, gpu, 'surfaces');
+    if (!surface) {
+      console.error('Could not make surface');
+      return;
+    }
 
     // create a subsurface as a temporary workspace.
     const subSurface = surface.makeSurface({
@@ -1012,45 +1207,50 @@
     patternPaint.setShader(pattern);
 
     let i = 0;
-
     function drawFrame(canvas) {
       i++;
       canvas.clear(CanvasKit.WHITE);
-
       canvas.drawOval(CanvasKit.LTRBRect(i % 60, i % 60, 300 - (i% 60), 300 - (i % 60)), patternPaint);
       surface.requestAnimationFrame(drawFrame);
-      // if (grContext) {
-      //   console.log(grContext.getResourceCacheUsageBytes() + ' bytes used in the GPU');
-      // }
     }
     surface.requestAnimationFrame(drawFrame);
   }
 
-  function AtlasAPI1(CanvasKit, imgData) {
+  function AtlasAPI1(CanvasKit, gpu, imgData) {
     if (!CanvasKit || !imgData) {
       return;
     }
-    const surface = CanvasKit.MakeCanvasSurface('atlas');
+
+    const surface = MakeCanvasSurface(CanvasKit, gpu, 'atlas');
     if (!surface) {
       console.error('Could not make surface');
       return;
     }
-    const img = CanvasKit.MakeImageFromEncoded(imgData);
 
+    const img = CanvasKit.MakeImageFromEncoded(imgData);
     const paint = new CanvasKit.Paint();
     paint.setColor(CanvasKit.Color(0, 0, 0, 0.8));
 
-    const srcs = new CanvasKit.RectBuilder();
-    srcs.push(0, 0, 250, 250 ); // LTRB
-    srcs.push(250, 0, 500, 250 );
+    // Allocate space for 2 rectangles.
+    const srcs = CanvasKit.Malloc(Float32Array, 8);
+    srcs.toTypedArray().set([
+      0, 0, 250, 250, // LTRB
+      250, 0, 500, 250
+    ]);
 
-    const dsts = new CanvasKit.RSXFormBuilder();
-    dsts.push(.5, 0, 0, 0); // scos, ssin, tx, ty
-    dsts.push(0, .8, 200, 100);
+    // Allocate space for 2 RSXForms
+    const dsts = CanvasKit.Malloc(Float32Array, 8);
+    dsts.toTypedArray().set([
+      .5, 0, 0, 0,  // scos, ssin, tx, ty
+      0, .8, 200, 100
+    ]);
 
-    const colors = new CanvasKit.ColorBuilder();
-    colors.push(CanvasKit.ColorAsInt(85, 170, 10, 128)); // light green
-    colors.push(CanvasKit.ColorAsInt(51, 51, 191, 128)); // light blue
+   // Allocate space for 4 colors.
+    const colors = new CanvasKit.Malloc(Uint32Array, 2);
+    colors.toTypedArray().set([
+      CanvasKit.ColorAsInt( 85, 170,  10, 128), // light green
+      CanvasKit.ColorAsInt( 51,  51, 191, 128), // light blue
+    ]);
 
     let i = 0;
 
@@ -1062,15 +1262,14 @@
       // update the coordinates of existing sprites - note that this
       // does not require a full re-copy of the full array; they are
       // updated in-place.
-      dsts.set(0, 0.5, 0, (2*i)%200, (5*Math.round(i/200)) % 200);
-      dsts.set(1, scale*Math.sin(i/20), scale*Math.cos(i/20), 200, 100);
+      dsts.toTypedArray().set([0.5, 0, (2*i)%200, (5*Math.round(i/200)) % 200], 0);
+      dsts.toTypedArray().set([scale*Math.sin(i/20), scale*Math.cos(i/20), 200, 100], 4);
 
       canvas.drawAtlas(img, srcs, dsts, paint, CanvasKit.BlendMode.Plus, colors,
                        {filter: CanvasKit.FilterMode.Nearest});
       surface.requestAnimationFrame(drawFrame);
     }
     surface.requestAnimationFrame(drawFrame);
-
   }
 
   async function DecodeAPI(CanvasKit, imgData) {

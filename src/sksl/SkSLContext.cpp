@@ -7,38 +7,23 @@
 
 #include "src/sksl/SkSLContext.h"
 
+#include "include/core/SkTypes.h"
+#ifdef SK_DEBUG
+#include "src/sksl/SkSLPool.h"
+#endif
+
 namespace SkSL {
 
-/**
- * Used as a sentinel expression during dataflow analysis, when an exact value for a variable can't
- * be determined at compile-time.
- */
-class DefinedExpression final : public Expression {
-public:
-    static constexpr Kind kExpressionKind = Kind::kDefined;
-
-    DefinedExpression(const Type* type)
-    : INHERITED(/*offset=*/-1, kExpressionKind, type) {}
-
-    bool hasProperty(Property property) const override {
-        return false;
-    }
-
-    String description() const override {
-        return "<defined>";
-    }
-
-    std::unique_ptr<Expression> clone() const override {
-        return std::make_unique<DefinedExpression>(&this->type());
-    }
-
-    using INHERITED = Expression;
-};
-
-Context::Context(ErrorReporter& errors, const ShaderCapsClass& caps)
-        : fErrors(errors)
+Context::Context(const BuiltinTypes& types, const ShaderCaps* caps, ErrorReporter& errors)
+        : fTypes(types)
         , fCaps(caps)
-        , fDefined_Expression(std::make_unique<DefinedExpression>(fTypes.fInvalid.get())) {}
+        , fErrors(&errors) {
+    SkASSERT(!Pool::IsAttached());
+}
+
+Context::~Context() {
+    SkASSERT(!Pool::IsAttached());
+}
 
 }  // namespace SkSL
 

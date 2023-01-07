@@ -21,7 +21,6 @@
 #include "include/core/SkSurface.h"
 #include "include/core/SkTypes.h"
 #include "samplecode/Sample.h"
-#include "src/core/SkClipOpPriv.h"
 #include "src/core/SkPointPriv.h"
 #include "tools/ToolUtils.h"
 
@@ -255,7 +254,7 @@ void FatBits::drawLineSkeleton(SkCanvas* max, const SkPoint pts[]) {
     max->drawPath(path, paint);
 }
 
-void FatBits::drawLine(SkCanvas* canvas, SkPoint pts[]) {
+void FatBits::drawLine(SkCanvas* canvas, SkPoint pts[2]) {
     SkPaint paint;
 
     fInverse.mapPoints(pts, 2);
@@ -271,7 +270,7 @@ void FatBits::drawLine(SkCanvas* canvas, SkPoint pts[]) {
         fMinSurface->getCanvas()->save();
         SkRect r = fClipRect;
         r.inset(SK_Scalar1/3, SK_Scalar1/3);
-        fMinSurface->getCanvas()->clipRect(r, kIntersect_SkClipOp, true);
+        fMinSurface->getCanvas()->clipRect(r, SkClipOp::kIntersect, true);
     }
     fMinSurface->getCanvas()->drawLine(pts[0], pts[1], paint);
     if (fUseClip) {

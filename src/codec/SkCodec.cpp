@@ -5,32 +5,63 @@
  * found in the LICENSE file.
  */
 
-#include "include/codec/SkAndroidCodec.h"
 #include "include/codec/SkCodec.h"
+
 #include "include/core/SkBitmap.h"
+#include "include/core/SkColorPriv.h"
 #include "include/core/SkColorSpace.h"
+#include "include/core/SkColorType.h"
 #include "include/core/SkData.h"
-#include "include/core/SkImage.h"
-#include "include/private/SkHalf.h"
-#include "src/codec/SkBmpCodec.h"
+#include "include/core/SkImage.h" // IWYU pragma: keep
+#include "include/core/SkMatrix.h"
+#include "include/core/SkStream.h"
+#include "include/private/SkTemplates.h"
+#include "modules/skcms/skcms.h"
 #include "src/codec/SkCodecPriv.h"
 #include "src/codec/SkFrameHolder.h"
+#include "src/codec/SkSampler.h"
+
+// We always include and compile in these BMP codecs
+#include "src/codec/SkBmpCodec.h"
+#include "src/codec/SkWbmpCodec.h"
+
+#include <utility>
+
+#ifdef SK_HAS_ANDROID_CODEC
+#include "include/codec/SkAndroidCodec.h"
+#endif
+
+#ifdef SK_CODEC_DECODES_AVIF
+#include "src/codec/SkAvifCodec.h"
+#endif
+
 #ifdef SK_HAS_HEIF_LIBRARY
 #include "src/codec/SkHeifCodec.h"
 #endif
-#include "src/codec/SkIcoCodec.h"
+
+#ifdef SK_CODEC_DECODES_JPEG
 #include "src/codec/SkJpegCodec.h"
+#endif
+
+#ifdef SK_CODEC_DECODES_JPEGXL
+#include "src/codec/SkJpegxlCodec.h"
+#endif
+
 #ifdef SK_CODEC_DECODES_PNG
+#include "src/codec/SkIcoCodec.h"
 #include "src/codec/SkPngCodec.h"
 #endif
-#include "include/core/SkStream.h"
+
+#ifdef SK_CODEC_DECODES_RAW
 #include "src/codec/SkRawCodec.h"
-#include "src/codec/SkWbmpCodec.h"
+#endif
+
+#ifdef SK_CODEC_DECODES_WEBP
 #include "src/codec/SkWebpCodec.h"
+#endif
+
 #ifdef SK_HAS_WUFFS_LIBRARY
 #include "src/codec/SkWuffsCodec.h"
-#elif defined(SK_USE_LIBGIFCODEC)
-#include "SkGifCodec.h"
 #endif
 
 struct DecoderProc {
@@ -48,14 +79,18 @@ static std::vector<DecoderProc>* decoders() {
     #endif
     #ifdef SK_HAS_WUFFS_LIBRARY
         { SkWuffsCodec_IsFormat, SkWuffsCodec_MakeFromStream },
-    #elif defined(SK_USE_LIBGIFCODEC)
-        { SkGifCodec::IsGif, SkGifCodec::MakeFromStream },
     #endif
     #ifdef SK_CODEC_DECODES_PNG
         { SkIcoCodec::IsIco, SkIcoCodec::MakeFromStream },
     #endif
         { SkBmpCodec::IsBmp, SkBmpCodec::MakeFromStream },
         { SkWbmpCodec::IsWbmp, SkWbmpCodec::MakeFromStream },
+    #ifdef SK_CODEC_DECODES_AVIF
+        { SkAvifCodec::IsAvif, SkAvifCodec::MakeFromStream },
+    #endif
+    #ifdef SK_CODEC_DECODES_JPEGXL
+        { SkJpegxlCodec::IsJpegxl, SkJpegxlCodec::MakeFromStream },
+    #endif
     };
     return decoders;
 }
@@ -118,29 +153,27 @@ std::unique_ptr<SkCodec> SkCodec::MakeFromStream(
 #ifdef SK_CODEC_DECODES_PNG
     if (SkPngCodec::IsPng(buffer, bytesRead)) {
         return SkPngCodec::MakeFromStream(std::move(stream), outResult, chunkReader);
-    } else
+    }
 #endif
-    {
-        for (DecoderProc proc : *decoders()) {
-            if (proc.IsFormat(buffer, bytesRead)) {
-                return proc.MakeFromStream(std::move(stream), outResult);
-            }
+
+    for (DecoderProc proc : *decoders()) {
+        if (proc.IsFormat(buffer, bytesRead)) {
+            return proc.MakeFromStream(std::move(stream), outResult);
         }
+    }
 
 #ifdef SK_HAS_HEIF_LIBRARY
-        SkEncodedImageFormat format;
-        if (SkHeifCodec::IsSupported(buffer, bytesRead, &format)) {
-            return SkHeifCodec::MakeFromStream(std::move(stream), selectionPolicy,
-                    format, outResult);
-        }
+    SkEncodedImageFormat format;
+    if (SkHeifCodec::IsSupported(buffer, bytesRead, &format)) {
+        return SkHeifCodec::MakeFromStream(std::move(stream), selectionPolicy,
+                format, outResult);
+    }
 #endif
 
 #ifdef SK_CODEC_DECODES_RAW
-        // Try to treat the input as RAW if all the other checks failed.
-        return SkRawCodec::MakeFromStream(std::move(stream), outResult);
-#endif
-    }
-
+    // Try to treat the input as RAW if all the other checks failed.
+    return SkRawCodec::MakeFromStream(std::move(stream), outResult);
+#else
     if (bytesRead < bytesToRead) {
         *outResult = kIncompleteInput;
     } else {
@@ -148,6 +181,7 @@ std::unique_ptr<SkCodec> SkCodec::MakeFromStream(
     }
 
     return nullptr;
+#endif
 }
 
 std::unique_ptr<SkCodec> SkCodec::MakeFromData(sk_sp<SkData> data, SkPngChunkReader* reader) {
@@ -172,6 +206,10 @@ SkCodec::SkCodec(SkEncodedInfo&& info, XformFormat srcFormat, std::unique_ptr<Sk
 {}
 
 SkCodec::~SkCodec() {}
+
+void SkCodec::setSrcXformFormat(XformFormat pixelFormat) {
+    fSrcXformFormat = pixelFormat;
+}
 
 bool SkCodec::queryYUVAInfo(const SkYUVAPixmapInfo::SupportedDataTypes& supportedDataTypes,
                             SkYUVAPixmapInfo* yuvaPixmapInfo) const {

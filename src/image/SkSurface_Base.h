@@ -21,7 +21,9 @@ public:
     ~SkSurface_Base() override;
 
     virtual GrRecordingContext* onGetRecordingContext();
+    virtual skgpu::graphite::Recorder* onGetRecorder();
 
+#if SK_SUPPORT_GPU
     virtual GrBackendTexture onGetBackendTexture(BackendHandleAccess);
     virtual GrBackendRenderTarget onGetBackendRenderTarget(BackendHandleAccess);
     virtual bool onReplaceBackendTexture(const GrBackendTexture&,
@@ -29,6 +31,20 @@ public:
                                          ContentChangeMode,
                                          TextureReleaseProc,
                                          ReleaseContext);
+
+    virtual void onResolveMSAA() {}
+
+    /**
+     * Issue any pending surface IO to the current backend 3D API and resolve any surface MSAA.
+     * Inserts the requested number of semaphores for the gpu to signal when work is complete on the
+     * gpu and inits the array of GrBackendSemaphores with the signaled semaphores.
+     */
+    virtual GrSemaphoresSubmitted onFlush(BackendSurfaceAccess access, const GrFlushInfo&,
+                                          const skgpu::MutableTextureState*) {
+        return GrSemaphoresSubmitted::kNo;
+    }
+#endif
+
     /**
      *  Allocate a canvas that will draw into this surface. We will cache this
      *  canvas, to return the same object to the caller multiple times. We
@@ -53,10 +69,25 @@ public:
     virtual void onWritePixels(const SkPixmap&, int x, int y) = 0;
 
     /**
+     * Default implementation calls onAsyncRescaleAndReadPixels with default rescale params.
+     */
+    virtual void onAsyncReadPixels(const SkImageInfo& info,
+                                   const SkIRect srcRect,
+                                   ReadPixelsCallback callback,
+                                   ReadPixelsContext context) {
+        this->onAsyncRescaleAndReadPixels(info,
+                                          srcRect,
+                                          RescaleGamma::kSrc,
+                                          RescaleMode::kNearest,
+                                          callback,
+                                          context);
+    }
+
+    /**
      * Default implementation does a rescale/read and then calls the callback.
      */
     virtual void onAsyncRescaleAndReadPixels(const SkImageInfo&,
-                                             const SkIRect& srcRect,
+                                             const SkIRect srcRect,
                                              RescaleGamma,
                                              RescaleMode,
                                              ReadPixelsCallback,
@@ -66,8 +97,8 @@ public:
      */
     virtual void onAsyncRescaleAndReadPixelsYUV420(SkYUVColorSpace,
                                                    sk_sp<SkColorSpace> dstColorSpace,
-                                                   const SkIRect& srcRect,
-                                                   const SkISize& dstSize,
+                                                   SkIRect srcRect,
+                                                   SkISize dstSize,
                                                    RescaleGamma,
                                                    RescaleMode,
                                                    ReadPixelsCallback,
@@ -94,24 +125,16 @@ public:
      *  If the surface is about to change, we call this so that our subclass
      *  can optionally fork their backend (copy-on-write) in case it was
      *  being shared with the cachedImage.
+     *
+     *  Returns false if the backing cannot be un-shared.
      */
-    virtual void onCopyOnWrite(ContentChangeMode) = 0;
+    virtual bool SK_WARN_UNUSED_RESULT onCopyOnWrite(ContentChangeMode) = 0;
 
     /**
      *  Signal the surface to remind its backing store that it's mutable again.
      *  Called only when we _didn't_ copy-on-write; we assume the copies start mutable.
      */
     virtual void onRestoreBackingMutability() {}
-
-    /**
-     * Issue any pending surface IO to the current backend 3D API and resolve any surface MSAA.
-     * Inserts the requested number of semaphores for the gpu to signal when work is complete on the
-     * gpu and inits the array of GrBackendSemaphores with the signaled semaphores.
-     */
-    virtual GrSemaphoresSubmitted onFlush(BackendSurfaceAccess access, const GrFlushInfo&,
-                                          const GrBackendSurfaceMutableState*) {
-        return GrSemaphoresSubmitted::kNo;
-    }
 
     /**
      * Caused the current backend 3D API to wait on the passed in semaphores before executing new
@@ -129,6 +152,10 @@ public:
         return false;
     }
 
+    // TODO: Remove this (make it pure virtual) after updating Android (which has a class derived
+    // from SkSurface_Base).
+    virtual sk_sp<const SkCapabilities> onCapabilities();
+
     inline SkCanvas* getCachedCanvas();
     inline sk_sp<SkImage> refCachedImage();
 
@@ -141,7 +168,8 @@ private:
     std::unique_ptr<SkCanvas>   fCachedCanvas;
     sk_sp<SkImage>              fCachedImage;
 
-    void aboutToDraw(ContentChangeMode mode);
+    // Returns false if drawing should not take place (allocation failure).
+    bool SK_WARN_UNUSED_RESULT aboutToDraw(ContentChangeMode mode);
 
     // Returns true if there is an outstanding image-snapshot, indicating that a call to aboutToDraw
     // would trigger a copy-on-write.

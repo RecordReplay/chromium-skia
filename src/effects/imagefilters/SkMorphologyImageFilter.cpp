@@ -5,27 +5,63 @@
  * found in the LICENSE file.
  */
 
+#include "include/core/SkAlphaType.h"
 #include "include/core/SkBitmap.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkColorType.h"
+#include "include/core/SkFlattenable.h"
+#include "include/core/SkImageFilter.h"
+#include "include/core/SkImageInfo.h"
+#include "include/core/SkMatrix.h"
+#include "include/core/SkPoint.h"
 #include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkSize.h"
+#include "include/core/SkString.h"
+#include "include/core/SkTypes.h"
 #include "include/effects/SkImageFilters.h"
 #include "include/private/SkColorData.h"
+#include "include/private/SkSLSampleUsage.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkSpecialImage.h"
 #include "src/core/SkWriteBuffer.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <utility>
+
 #if SK_SUPPORT_GPU
 #include "include/gpu/GrRecordingContext.h"
-#include "src/gpu/GrDirectContextPriv.h"
-#include "src/gpu/GrRecordingContextPriv.h"
-#include "src/gpu/GrSurfaceDrawContext.h"
-#include "src/gpu/GrTexture.h"
-#include "src/gpu/GrTextureProxy.h"
-#include "src/gpu/SkGr.h"
-#include "src/gpu/glsl/GrGLSLFragmentProcessor.h"
-#include "src/gpu/glsl/GrGLSLFragmentShaderBuilder.h"
-#include "src/gpu/glsl/GrGLSLProgramDataManager.h"
-#include "src/gpu/glsl/GrGLSLUniformHandler.h"
+#include "include/gpu/GrTypes.h"
+#include "include/private/gpu/ganesh/GrTypesPriv.h"
+#include "src/core/SkSLTypeShared.h"
+#include "src/gpu/KeyBuilder.h"
+#include "src/gpu/ganesh/GrColorInfo.h"
+#include "src/gpu/ganesh/GrFragmentProcessor.h"
+#include "src/gpu/ganesh/GrImageInfo.h"
+#include "src/gpu/ganesh/GrProcessor.h"
+#include "src/gpu/ganesh/GrProcessorUnitTest.h"
+#include "src/gpu/ganesh/GrRecordingContextPriv.h"
+#include "src/gpu/ganesh/GrSurfaceProxy.h"
+#include "src/gpu/ganesh/GrSurfaceProxyView.h"
+#include "src/gpu/ganesh/SurfaceFillContext.h"
+#include "src/gpu/ganesh/effects/GrTextureEffect.h"
+#include "src/gpu/ganesh/glsl/GrGLSLFragmentShaderBuilder.h"
+#include "src/gpu/ganesh/glsl/GrGLSLProgramDataManager.h"
+#include "src/gpu/ganesh/glsl/GrGLSLUniformHandler.h"
+
+struct GrShaderCaps;
+#endif
+
+#if GR_TEST_UTILS
+#include "include/utils/SkRandom.h"
+#endif
+
+#if SK_CPU_SSE_LEVEL >= SK_CPU_SSE_LEVEL_SSE2
+    #include <emmintrin.h>
 #endif
 
 namespace {
@@ -112,16 +148,9 @@ void SkRegisterMorphologyImageFilterFlattenables() {
 
 sk_sp<SkFlattenable> SkMorphologyImageFilter::CreateProc(SkReadBuffer& buffer) {
     SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 1);
-    SkScalar width;
-    SkScalar height;
-    if (buffer.isVersionLT(SkPicturePriv::kMorphologyTakesScalar_Version)) {
-        width = buffer.readInt();
-        height = buffer.readInt();
-    } else {
-        width = buffer.readScalar();
-        height = buffer.readScalar();
-    }
 
+    SkScalar width = buffer.readScalar();
+    SkScalar height = buffer.readScalar();
     MorphType filterType = buffer.read32LE(MorphType::kLastType);
 
     if (filterType == MorphType::kDilate) {
@@ -210,9 +239,9 @@ private:
     bool fUseRange;
     float fRange[2];
 
-    std::unique_ptr<GrGLSLFragmentProcessor> onMakeProgramImpl() const override;
+    std::unique_ptr<ProgramImpl> onMakeProgramImpl() const override;
 
-    void onGetGLSLProcessorKey(const GrShaderCaps&, GrProcessorKeyBuilder*) const override;
+    void onAddToKey(const GrShaderCaps&, skgpu::KeyBuilder*) const override;
 
     bool onIsEqual(const GrFragmentProcessor&) const override;
     GrMorphologyEffect(std::unique_ptr<GrFragmentProcessor> inputFP, GrSurfaceProxyView,
@@ -225,8 +254,8 @@ private:
     using INHERITED = GrFragmentProcessor;
 };
 
-std::unique_ptr<GrGLSLFragmentProcessor> GrMorphologyEffect::onMakeProgramImpl() const {
-    class Impl : public GrGLSLFragmentProcessor {
+std::unique_ptr<GrFragmentProcessor::ProgramImpl> GrMorphologyEffect::onMakeProgramImpl() const {
+    class Impl : public ProgramImpl {
     public:
         void emitCode(EmitArgs& args) override {
             constexpr int kInputFPIndex = 0;
@@ -235,7 +264,7 @@ std::unique_ptr<GrGLSLFragmentProcessor> GrMorphologyEffect::onMakeProgramImpl()
             const GrMorphologyEffect& me = args.fFp.cast<GrMorphologyEffect>();
 
             GrGLSLUniformHandler* uniformHandler = args.fUniformHandler;
-            fRangeUni = uniformHandler->addUniform(&me, kFragment_GrShaderFlag, kFloat2_GrSLType,
+            fRangeUni = uniformHandler->addUniform(&me, kFragment_GrShaderFlag, SkSLType::kFloat2,
                                                    "Range");
             const char* range = uniformHandler->getUniformCStr(fRangeUni);
 
@@ -276,7 +305,7 @@ std::unique_ptr<GrGLSLFragmentProcessor> GrMorphologyEffect::onMakeProgramImpl()
             fragBuilder->codeAppendf("return color * %s;", inputColor.c_str());
         }
 
-    protected:
+    private:
         void onSetData(const GrGLSLProgramDataManager& pdman,
                        const GrFragmentProcessor& proc) override {
             const GrMorphologyEffect& m = proc.cast<GrMorphologyEffect>();
@@ -285,14 +314,13 @@ std::unique_ptr<GrGLSLFragmentProcessor> GrMorphologyEffect::onMakeProgramImpl()
             }
         }
 
-    private:
         GrGLSLProgramDataManager::UniformHandle fRangeUni;
     };
+
     return std::make_unique<Impl>();
 }
 
-void GrMorphologyEffect::onGetGLSLProcessorKey(const GrShaderCaps& caps,
-                                               GrProcessorKeyBuilder* b) const {
+void GrMorphologyEffect::onAddToKey(const GrShaderCaps& caps, skgpu::KeyBuilder* b) const {
     uint32_t key = static_cast<uint32_t>(fRadius);
     key |= (static_cast<uint32_t>(fType) << 8);
     key |= (static_cast<uint32_t>(fDirection) << 9);
@@ -325,13 +353,11 @@ GrMorphologyEffect::GrMorphologyEffect(std::unique_ptr<GrFragmentProcessor> inpu
 }
 
 GrMorphologyEffect::GrMorphologyEffect(const GrMorphologyEffect& that)
-        : INHERITED(kGrMorphologyEffect_ClassID, that.optimizationFlags())
+        : INHERITED(that)
         , fDirection(that.fDirection)
         , fRadius(that.fRadius)
         , fType(that.fType)
         , fUseRange(that.fUseRange) {
-    this->setUsesSampleCoordsDirectly();
-    this->cloneAndRegisterAllChildProcessors(that);
     if (that.fUseRange) {
         fRange[0] = that.fRange[0];
         fRange[1] = that.fRange[1];
@@ -362,7 +388,7 @@ std::unique_ptr<GrFragmentProcessor> GrMorphologyEffect::TestCreate(GrProcessorT
 }
 #endif
 
-static void apply_morphology_rect(GrSurfaceFillContext* surfaceFillContext,
+static void apply_morphology_rect(skgpu::v1::SurfaceFillContext* sfc,
                                   GrSurfaceProxyView view,
                                   SkAlphaType srcAlphaType,
                                   const SkIRect& srcRect,
@@ -378,10 +404,10 @@ static void apply_morphology_rect(GrSurfaceFillContext* surfaceFillContext,
                                        radius,
                                        morphType,
                                        range);
-    surfaceFillContext->fillRectToRectWithFP(srcRect, dstRect, std::move(fp));
+    sfc->fillRectToRectWithFP(srcRect, dstRect, std::move(fp));
 }
 
-static void apply_morphology_rect_no_bounds(GrSurfaceFillContext* surfaceFillContext,
+static void apply_morphology_rect_no_bounds(skgpu::v1::SurfaceFillContext* sfc,
                                             GrSurfaceProxyView view,
                                             SkAlphaType srcAlphaType,
                                             const SkIRect& srcRect,
@@ -391,10 +417,10 @@ static void apply_morphology_rect_no_bounds(GrSurfaceFillContext* surfaceFillCon
                                             MorphDirection direction) {
     auto fp = GrMorphologyEffect::Make(
             /*inputFP=*/nullptr, std::move(view), srcAlphaType, direction, radius, morphType);
-    surfaceFillContext->fillRectToRectWithFP(srcRect, dstRect, std::move(fp));
+    sfc->fillRectToRectWithFP(srcRect, dstRect, std::move(fp));
 }
 
-static void apply_morphology_pass(GrSurfaceFillContext* surfaceFillContext,
+static void apply_morphology_pass(skgpu::v1::SurfaceFillContext* sfc,
                                   GrSurfaceProxyView view,
                                   SkAlphaType srcAlphaType,
                                   const SkIRect& srcRect,
@@ -427,27 +453,25 @@ static void apply_morphology_pass(GrSurfaceFillContext* surfaceFillContext,
     }
     if (middleSrcRect.width() <= 0) {
         // radius covers srcRect; use bounds over entire draw
-        apply_morphology_rect(surfaceFillContext, std::move(view), srcAlphaType, srcRect,
+        apply_morphology_rect(sfc, std::move(view), srcAlphaType, srcRect,
                               dstRect, radius, morphType, bounds, direction);
     } else {
         // Draw upper and lower margins with bounds; middle without.
-        apply_morphology_rect(surfaceFillContext, view, srcAlphaType, lowerSrcRect,
+        apply_morphology_rect(sfc, view, srcAlphaType, lowerSrcRect,
                               lowerDstRect, radius, morphType, bounds, direction);
-        apply_morphology_rect(surfaceFillContext, view, srcAlphaType, upperSrcRect,
+        apply_morphology_rect(sfc, view, srcAlphaType, upperSrcRect,
                               upperDstRect, radius, morphType, bounds, direction);
-        apply_morphology_rect_no_bounds(surfaceFillContext, std::move(view), srcAlphaType,
+        apply_morphology_rect_no_bounds(sfc, std::move(view), srcAlphaType,
                                         middleSrcRect, middleDstRect, radius, morphType, direction);
     }
 }
 
 static sk_sp<SkSpecialImage> apply_morphology(
-        GrRecordingContext* context, SkSpecialImage* input, const SkIRect& rect,
+        GrRecordingContext* rContext, SkSpecialImage* input, const SkIRect& rect,
         MorphType morphType, SkISize radius, const SkImageFilter_Base::Context& ctx) {
-    GrSurfaceProxyView srcView = input->view(context);
+    GrSurfaceProxyView srcView = input->view(rContext);
     SkAlphaType srcAlphaType = input->alphaType();
     SkASSERT(srcView.asTextureProxy());
-    sk_sp<SkColorSpace> colorSpace = ctx.refColorSpace();
-    GrColorType colorType = ctx.grColorType();
 
     GrSurfaceProxy* proxy = srcView.proxy();
 
@@ -457,15 +481,17 @@ static sk_sp<SkSpecialImage> apply_morphology(
     srcRect.offset(input->subset().x(), input->subset().y());
     SkASSERT(radius.width() > 0 || radius.height() > 0);
 
+    GrImageInfo info(ctx.grColorType(), kPremul_SkAlphaType, ctx.refColorSpace(), rect.size());
+
     if (radius.fWidth > 0) {
-        GrImageInfo info(colorType, kPremul_SkAlphaType, colorSpace, rect.size());
-        auto dstFillContext = GrSurfaceFillContext::Make(context,
-                                                         info,
-                                                         SkBackingFit::kApprox,
-                                                         1,
-                                                         GrMipmapped::kNo,
-                                                         proxy->isProtected(),
-                                                         kBottomLeft_GrSurfaceOrigin);
+        auto dstFillContext =
+                rContext->priv().makeSFC(info,
+                                         "SpecialImage_ApplyMorphology_Width",
+                                         SkBackingFit::kApprox,
+                                         1,
+                                         GrMipmapped::kNo,
+                                         proxy->isProtected(),
+                                         kBottomLeft_GrSurfaceOrigin);
         if (!dstFillContext) {
             return nullptr;
         }
@@ -483,14 +509,14 @@ static sk_sp<SkSpecialImage> apply_morphology(
         srcRect = dstRect;
     }
     if (radius.fHeight > 0) {
-        GrImageInfo info(colorType, kPremul_SkAlphaType, colorSpace, rect.size());
-        auto dstFillContext = GrSurfaceFillContext::Make(context,
-                                                         info,
-                                                         SkBackingFit::kApprox,
-                                                         1,
-                                                         GrMipmapped::kNo,
-                                                         srcView.proxy()->isProtected(),
-                                                         kBottomLeft_GrSurfaceOrigin);
+        auto dstFillContext =
+                rContext->priv().makeSFC(info,
+                                         "SpecialImage_ApplyMorphology_Height",
+                                         SkBackingFit::kApprox,
+                                         1,
+                                         GrMipmapped::kNo,
+                                         srcView.proxy()->isProtected(),
+                                         kBottomLeft_GrSurfaceOrigin);
         if (!dstFillContext) {
             return nullptr;
         }
@@ -501,11 +527,12 @@ static sk_sp<SkSpecialImage> apply_morphology(
         srcView = dstFillContext->readSurfaceView();
     }
 
-    return SkSpecialImage::MakeDeferredFromGpu(context,
+    return SkSpecialImage::MakeDeferredFromGpu(rContext,
                                                SkIRect::MakeWH(rect.width(), rect.height()),
                                                kNeedNewImageUniqueID_SpecialImage,
-                                               std::move(srcView), colorType,
-                                               std::move(colorSpace), &input->props());
+                                               std::move(srcView),
+                                               info.colorInfo(),
+                                               input->props());
 }
 #endif
 
@@ -668,7 +695,8 @@ sk_sp<SkSpecialImage> SkMorphologyImageFilter::onFilterImage(const Context& ctx,
         // called pad_image to account for our dilation of bounds, so the result will already be
         // moved to the destination color space. If a filter DAG avoids that, then we use this
         // fall-back, which saves us from having to do the xform during the filter itself.
-        input = ImageToColorSpace(input.get(), ctx.colorType(), ctx.colorSpace());
+        input = ImageToColorSpace(input.get(), ctx.colorType(), ctx.colorSpace(),
+                                  ctx.surfaceProps());
 
         sk_sp<SkSpecialImage> result(apply_morphology(context, input.get(), srcBounds, fType,
                                                       SkISize::Make(width, height), ctx));

@@ -208,7 +208,7 @@ DEF_SIMPLE_GM(circular_arcs_weird, canvas, 1000, 400) {
     SkPaint linePaint;
     linePaint.setAntiAlias(true);
     linePaint.setColor(SK_ColorRED);
-    SkScalar midX   = SK_ARRAY_COUNT(arcs) * (kS + kPad) - kPad/2.f;
+    SkScalar midX   = std::size(arcs) * (kS + kPad) - kPad/2.f;
     SkScalar height = paints.count() * (kS + kPad);
     canvas->drawLine(midX, -kPad, midX, height, linePaint);
 
@@ -247,8 +247,7 @@ DEF_SIMPLE_GM(onebadarc, canvas, 100, 100) {
     canvas->translate(20, 0);
     canvas->drawPath(path.detach(), p0);
 
-    SkRect kRect = { 60, 0, 100, 40};
-    canvas->drawArc(kRect, 45, 90, true, p0);
+    canvas->drawArc(SkRect{60, 0, 100, 40}, 45, 90, true, p0);
 }
 
 DEF_SIMPLE_GM(crbug_888453, canvas, 480, 150) {

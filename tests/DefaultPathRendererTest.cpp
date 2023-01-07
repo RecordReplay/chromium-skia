@@ -20,16 +20,15 @@
 #include "include/gpu/GrContextOptions.h"
 #include "include/gpu/GrDirectContext.h"
 #include "include/gpu/GrTypes.h"
-#include "include/private/GrTypesPriv.h"
 #include "include/private/SkColorData.h"
-#include "src/gpu/GrCaps.h"
-#include "src/gpu/GrDirectContextPriv.h"
-#include "src/gpu/GrFragmentProcessor.h"
-#include "src/gpu/GrImageInfo.h"
-#include "src/gpu/GrPaint.h"
-#include "src/gpu/GrStyle.h"
-#include "src/gpu/GrSurfaceDrawContext.h"
-#include "src/gpu/effects/generated/GrConstColorProcessor.h"
+#include "include/private/gpu/ganesh/GrTypesPriv.h"
+#include "src/gpu/ganesh/GrCaps.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrFragmentProcessor.h"
+#include "src/gpu/ganesh/GrImageInfo.h"
+#include "src/gpu/ganesh/GrPaint.h"
+#include "src/gpu/ganesh/GrStyle.h"
+#include "src/gpu/ganesh/SurfaceDrawContext.h"
 #include "tests/Test.h"
 #include "tools/gpu/GrContextFactory.h"
 
@@ -39,7 +38,8 @@ static void only_allow_default(GrContextOptions* options) {
     options->fGpuPathRenderers = GpuPathRenderers::kNone;
 }
 
-static SkBitmap read_back(GrDirectContext* dContext, GrSurfaceDrawContext* rtc,
+static SkBitmap read_back(GrDirectContext* dContext,
+                          skgpu::v1::SurfaceDrawContext* sdc,
                           int width, int height) {
 
     SkImageInfo dstII = SkImageInfo::MakeN32Premul(width, height);
@@ -47,7 +47,7 @@ static SkBitmap read_back(GrDirectContext* dContext, GrSurfaceDrawContext* rtc,
     SkBitmap bm;
     bm.allocPixels(dstII);
 
-    rtc->readPixels(dContext, bm.pixmap(), {0, 0});
+    sdc->readPixels(dContext, bm.pixmap(), {0, 0});
 
     return bm;
 }
@@ -72,7 +72,7 @@ static const int kPad = 3;
 //   create a new render target context that will reuse the prior GrSurface
 //   draw a normally wound concave path that touches outside of the approx fit RTC's content rect
 //
-// When the bug manifests the GrDefaultPathRenderer/GrMSAAPathRenderer is/was leaving the stencil
+// When the bug manifests the DefaultPathRenderer/GrMSAAPathRenderer is/was leaving the stencil
 // buffer outside of the first content rect in a bad state and the second draw would be incorrect.
 
 static void run_test(GrDirectContext* dContext, skiatest::Reporter* reporter) {
@@ -84,39 +84,41 @@ static void run_test(GrDirectContext* dContext, skiatest::Reporter* reporter) {
     GrStyle style(SkStrokeRec::kFill_InitStyle);
 
     {
-        auto rtc = GrSurfaceDrawContext::Make(
-            dContext, GrColorType::kRGBA_8888, nullptr, SkBackingFit::kApprox,
-            {kBigSize/2 + 1, kBigSize/2 + 1});
+        auto sdc = skgpu::v1::SurfaceDrawContext::Make(dContext, GrColorType::kRGBA_8888, nullptr,
+                                                       SkBackingFit::kApprox,
+                                                       {kBigSize/2 + 1, kBigSize/2 + 1},
+                                                       SkSurfaceProps(), /*label=*/{});
 
-        rtc->clear(SK_PMColor4fBLACK);
+        sdc->clear(SK_PMColor4fBLACK);
 
         GrPaint paint;
 
         const SkPMColor4f color = { 1.0f, 0.0f, 0.0f, 1.0f };
-        auto fp = GrConstColorProcessor::Make(color);
+        auto fp = GrFragmentProcessor::MakeColor(color);
         paint.setColorFragmentProcessor(std::move(fp));
 
-        rtc->drawPath(nullptr, std::move(paint), GrAA::kNo, SkMatrix::I(), invPath, style);
+        sdc->drawPath(nullptr, std::move(paint), GrAA::kNo, SkMatrix::I(), invPath, style);
 
-        dContext->priv().flushSurface(rtc->asSurfaceProxy());
+        dContext->priv().flushSurface(sdc->asSurfaceProxy());
     }
 
     {
-        auto rtc = GrSurfaceDrawContext::Make(
-            dContext, GrColorType::kRGBA_8888, nullptr, SkBackingFit::kExact, {kBigSize, kBigSize});
+        auto sdc = skgpu::v1::SurfaceDrawContext::Make(dContext, GrColorType::kRGBA_8888, nullptr,
+                                                       SkBackingFit::kExact, {kBigSize, kBigSize},
+                                                       SkSurfaceProps(), /*label=*/{});
 
-        rtc->clear(SK_PMColor4fBLACK);
+        sdc->clear(SK_PMColor4fBLACK);
 
         GrPaint paint;
 
         const SkPMColor4f color = { 0.0f, 1.0f, 0.0f, 1.0f };
-        auto fp = GrConstColorProcessor::Make(color);
+        auto fp = GrFragmentProcessor::MakeColor(color);
         paint.setColorFragmentProcessor(std::move(fp));
 
-        rtc->drawPath(nullptr, std::move(paint), GrAA::kNo,
+        sdc->drawPath(nullptr, std::move(paint), GrAA::kNo,
                       SkMatrix::I(), path, style);
 
-        SkBitmap bm = read_back(dContext, rtc.get(), kBigSize, kBigSize);
+        SkBitmap bm = read_back(dContext, sdc.get(), kBigSize, kBigSize);
 
         bool correct = true;
         for (int y = kBigSize/2+1; y < kBigSize-kPad-1 && correct; ++y) {
@@ -128,9 +130,12 @@ static void run_test(GrDirectContext* dContext, skiatest::Reporter* reporter) {
     }
 }
 
-DEF_GPUTEST_FOR_CONTEXTS(GrDefaultPathRendererTest,
-                         sk_gpu_test::GrContextFactory::IsRenderingContext,
-                         reporter, ctxInfo, only_allow_default) {
+DEF_GANESH_TEST_FOR_CONTEXTS(DefaultPathRendererTest,
+                             sk_gpu_test::GrContextFactory::IsRenderingContext,
+                             reporter,
+                             ctxInfo,
+                             only_allow_default,
+                             CtsEnforcement::kApiLevel_T) {
     auto ctx = ctxInfo.directContext();
 
     run_test(ctx, reporter);

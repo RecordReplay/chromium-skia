@@ -15,7 +15,7 @@
 #include "include/gpu/GrDirectContext.h"
 #include "src/core/SkDeferredDisplayListPriv.h"
 #include "src/core/SkTaskGroup.h"
-#include "src/gpu/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
 #include "src/image/SkImage_Gpu.h"
 #include "tools/DDLPromiseImageHelper.h"
 
@@ -32,12 +32,11 @@ void DDLTileHelper::TileData::init(int id,
                                                               this->paddedRectSize().height());
     SkASSERT(fPlaybackChar.isValid());
 
-    GrBackendFormat backendFormat = direct->defaultBackendFormat(fPlaybackChar.colorType(),
-                                                                 GrRenderable::kYes);
     SkDEBUGCODE(const GrCaps* caps = direct->priv().caps());
-    SkASSERT(caps->isFormatTexturable(backendFormat));
+    SkASSERT(caps->isFormatTexturable(fPlaybackChar.backendFormat(),
+                                      fPlaybackChar.backendFormat().textureType()));
 
-    fCallbackContext.reset(new PromiseImageCallbackContext(direct, backendFormat));
+    fCallbackContext.reset(new PromiseImageCallbackContext(direct, fPlaybackChar.backendFormat()));
 }
 
 DDLTileHelper::TileData::TileData() {}
@@ -194,9 +193,14 @@ void DDLTileHelper::TileData::CreateBackendTexture(GrDirectContext* direct, Tile
     SkASSERT(tile->fCallbackContext && !tile->fCallbackContext->promiseImageTexture());
 
     const SkSurfaceCharacterization& c = tile->fPlaybackChar;
-    GrBackendTexture beTex = direct->createBackendTexture(c.width(), c.height(), c.colorType(),
-                                                          GrMipMapped(c.isMipMapped()),
-                                                          GrRenderable::kYes);
+    GrBackendTexture beTex =
+            direct->createBackendTexture(c.width(),
+                                         c.height(),
+                                         c.colorType(),
+                                         GrMipmapped(c.isMipMapped()),
+                                         GrRenderable::kYes,
+                                         GrProtected::kNo,
+                                         /*label=*/"DDLTile_TileData_CreateBackendTexture");
     tile->fCallbackContext->setBackendTexture(beTex);
 }
 

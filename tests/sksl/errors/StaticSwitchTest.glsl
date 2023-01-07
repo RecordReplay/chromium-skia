@@ -1,4 +1,6 @@
 ### Compilation failed:
 
-error: 2: static switch has non-static test
+error: 4: static switch has non-static test
+    @switch (int(unknownInput)) {
+             ^^^^^^^^^^^^^^^^^
 1 error

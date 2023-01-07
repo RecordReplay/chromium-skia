@@ -10,6 +10,7 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkImageFilter.h"
 #include "include/core/SkPath.h"
+#include "include/core/SkPathEffect.h"
 #include "include/effects/SkDashPathEffect.h"
 #include "include/private/SkTo.h"
 #include "modules/svg/include/SkSVGAttribute.h"
@@ -67,7 +68,7 @@ SkScalar SkSVGLengthContext::resolve(const SkSVGLength& l, LengthType t) const {
     case SkSVGLength::Unit::kPC:
         return l.value() * fDPI * kPCMultiplier;
     default:
-        SkDebugf("unsupported unit type: <%d>\n", l.unit());
+        SkDebugf("unsupported unit type: <%d>\n", (int)l.unit());
         return 0;
     }
 }
@@ -116,7 +117,7 @@ static sk_sp<SkPathEffect> dash_effect(const SkSVGPresentationAttributes& props,
     }
 
     const auto& da = *props.fStrokeDashArray;
-    const auto count = da.dashArray().count();
+    const auto count = da.dashArray().size();
     SkSTArray<128, SkScalar, true> intervals(count);
     for (const auto& dash : da.dashArray()) {
         intervals.push_back(lctx.resolve(dash, SkSVGLengthContext::LengthType::kOther));
@@ -149,7 +150,7 @@ SkSVGRenderContext::SkSVGRenderContext(SkCanvas* canvas,
                                        const SkSVGIDMapper& mapper,
                                        const SkSVGLengthContext& lctx,
                                        const SkSVGPresentationContext& pctx,
-                                       const SkSVGNode* node)
+                                       const OBBScope& obbs)
     : fFontMgr(fmgr)
     , fResourceProvider(rp)
     , fIDMapper(mapper)
@@ -157,7 +158,7 @@ SkSVGRenderContext::SkSVGRenderContext(SkCanvas* canvas,
     , fPresentationContext(pctx)
     , fCanvas(canvas)
     , fCanvasSaveCount(canvas->getSaveCount())
-    , fNode(node) {}
+    , fOBBScope(obbs) {}
 
 SkSVGRenderContext::SkSVGRenderContext(const SkSVGRenderContext& other)
     : SkSVGRenderContext(other.fCanvas,
@@ -166,7 +167,7 @@ SkSVGRenderContext::SkSVGRenderContext(const SkSVGRenderContext& other)
                          other.fIDMapper,
                          *other.fLengthContext,
                          *other.fPresentationContext,
-                         other.fNode) {}
+                         other.fOBBScope) {}
 
 SkSVGRenderContext::SkSVGRenderContext(const SkSVGRenderContext& other, SkCanvas* canvas)
     : SkSVGRenderContext(canvas,
@@ -175,7 +176,7 @@ SkSVGRenderContext::SkSVGRenderContext(const SkSVGRenderContext& other, SkCanvas
                          other.fIDMapper,
                          *other.fLengthContext,
                          *other.fPresentationContext,
-                         other.fNode) {}
+                         other.fOBBScope) {}
 
 SkSVGRenderContext::SkSVGRenderContext(const SkSVGRenderContext& other, const SkSVGNode* node)
     : SkSVGRenderContext(other.fCanvas,
@@ -184,7 +185,7 @@ SkSVGRenderContext::SkSVGRenderContext(const SkSVGRenderContext& other, const Sk
                          other.fIDMapper,
                          *other.fLengthContext,
                          *other.fPresentationContext,
-                         node) {}
+                         OBBScope{node, this}) {}
 
 SkSVGRenderContext::~SkSVGRenderContext() {
     fCanvas->restoreToCount(fCanvasSaveCount);
@@ -396,14 +397,19 @@ SkTLazy<SkPaint> SkSVGRenderContext::commonPaint(const SkSVGPaint& paint_selecto
         // hierarchy.  To avoid gross transgressions like leaf node presentation attributes
         // leaking into the paint server context, use a pristine presentation context when
         // following hrefs.
+        //
+        // Preserve the OBB scope because some paints use object bounding box coords
+        // (e.g. gradient control points), which requires access to the render context
+        // and node being rendered.
         SkSVGPresentationContext pctx;
+        pctx.fNamedColors = fPresentationContext->fNamedColors;
         SkSVGRenderContext local_ctx(fCanvas,
                                      fFontMgr,
                                      fResourceProvider,
                                      fIDMapper,
                                      *fLengthContext,
                                      pctx,
-                                     fNode);
+                                     fOBBScope);
 
         const auto node = this->findNodeById(paint_selector.iri());
         if (!node || !node->asPaint(local_ctx, p.get())) {
@@ -455,6 +461,14 @@ SkTLazy<SkPaint> SkSVGRenderContext::strokePaint() const {
 }
 
 SkSVGColorType SkSVGRenderContext::resolveSvgColor(const SkSVGColor& color) const {
+    if (fPresentationContext->fNamedColors) {
+        for (auto&& ident : color.vars()) {
+            SkSVGColorType* c = fPresentationContext->fNamedColors->find(ident);
+            if (c) {
+                return *c;
+            }
+        }
+    }
     switch (color.type()) {
         case SkSVGColor::Type::kColor:
             return color.color();
@@ -467,6 +481,17 @@ SkSVGColorType SkSVGRenderContext::resolveSvgColor(const SkSVGColor& color) cons
     SkUNREACHABLE;
 }
 
+SkSVGRenderContext::OBBTransform
+SkSVGRenderContext::transformForCurrentOBB(SkSVGObjectBoundingBoxUnits u) const {
+    if (!fOBBScope.fNode || u.type() == SkSVGObjectBoundingBoxUnits::Type::kUserSpaceOnUse) {
+        return {{0,0},{1,1}};
+    }
+    SkASSERT(fOBBScope.fCtx);
+
+    const auto obb = fOBBScope.fNode->objectBoundingBox(*fOBBScope.fCtx);
+    return {{obb.x(), obb.y()}, {obb.width(), obb.height()}};
+}
+
 SkRect SkSVGRenderContext::resolveOBBRect(const SkSVGLength& x, const SkSVGLength& y,
                                           const SkSVGLength& w, const SkSVGLength& h,
                                           SkSVGObjectBoundingBoxUnits obbu) const {
@@ -477,13 +502,10 @@ SkRect SkSVGRenderContext::resolveOBBRect(const SkSVGLength& x, const SkSVGLengt
     }
 
     auto r = lctx->resolveRect(x, y, w, h);
-    if (obbu.type() == SkSVGObjectBoundingBoxUnits::Type::kObjectBoundingBox) {
-        const auto obb = fNode->objectBoundingBox(*this);
-        r = SkRect::MakeXYWH(obb.x() + r.x() * obb.width(),
-                             obb.y() + r.y() * obb.height(),
-                             r.width()  * obb.width(),
-                             r.height() * obb.height());
-    }
+    const auto obbt = this->transformForCurrentOBB(obbu);
 
-    return r;
+    return SkRect::MakeXYWH(obbt.scale.x * r.x() + obbt.offset.x,
+                            obbt.scale.y * r.y() + obbt.offset.y,
+                            obbt.scale.x * r.width(),
+                            obbt.scale.y * r.height());
 }

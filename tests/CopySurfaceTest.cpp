@@ -12,17 +12,16 @@
 #include "include/core/SkTypes.h"
 #include "include/gpu/GrDirectContext.h"
 #include "include/gpu/GrTypes.h"
-#include "include/private/GrTypesPriv.h"
 #include "include/private/SkTemplates.h"
-#include "src/core/SkUtils.h"
-#include "src/gpu/GrCaps.h"
-#include "src/gpu/GrDirectContextPriv.h"
-#include "src/gpu/GrImageInfo.h"
-#include "src/gpu/GrSurfaceContext.h"
-#include "src/gpu/GrSurfaceDrawContext.h"
-#include "src/gpu/GrSurfaceProxy.h"
-#include "src/gpu/GrTextureProxy.h"
-#include "src/gpu/SkGr.h"
+#include "include/private/gpu/ganesh/GrTypesPriv.h"
+#include "src/core/SkOpts.h"
+#include "src/gpu/ganesh/GrCaps.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrImageInfo.h"
+#include "src/gpu/ganesh/GrSurfaceProxy.h"
+#include "src/gpu/ganesh/GrTextureProxy.h"
+#include "src/gpu/ganesh/SkGr.h"
+#include "src/gpu/ganesh/SurfaceFillContext.h"
 #include "tests/Test.h"
 #include "tools/gpu/GrContextFactory.h"
 #include "tools/gpu/ProxyUtils.h"
@@ -30,7 +29,10 @@
 #include <initializer_list>
 #include <utility>
 
-DEF_GPUTEST_FOR_RENDERING_CONTEXTS(CopySurface, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(CopySurface,
+                                       reporter,
+                                       ctxInfo,
+                                       CtsEnforcement::kApiLevel_T) {
     auto dContext = ctxInfo.directContext();
 
     static const int kW = 10;
@@ -78,8 +80,8 @@ DEF_GPUTEST_FOR_RENDERING_CONTEXTS(CopySurface, reporter, ctxInfo) {
                     for (const SkIRect& srcRect : kSrcRects) {
                         for (const SkIPoint& dstPoint : kDstPoints) {
                             for (const SkImageInfo& ii: kImageInfos) {
-                                GrPixmap srcPM(ii, srcPixels.get(), kRowBytes);
-                                GrPixmap dstPM(ii, dstPixels.get(), kRowBytes);
+                                GrCPixmap srcPM(ii, srcPixels.get(), kRowBytes);
+                                GrPixmap  dstPM(ii, dstPixels.get(), kRowBytes);
                                 auto srcView = sk_gpu_test::MakeTextureProxyViewFromData(
                                         dContext, sRenderable, sOrigin, srcPM);
                                 auto dstView = sk_gpu_test::MakeTextureProxyViewFromData(
@@ -105,9 +107,8 @@ DEF_GPUTEST_FOR_RENDERING_CONTEXTS(CopySurface, reporter, ctxInfo) {
                                     }
                                 }
 
-                                auto dstContext = GrSurfaceContext::Make(dContext,
-                                                                         std::move(dstView),
-                                                                         ii.colorInfo());
+                                auto dstContext = dContext->priv().makeSC(std::move(dstView),
+                                                                          ii.colorInfo());
 
                                 bool result = false;
                                 if (sOrigin == dOrigin) {

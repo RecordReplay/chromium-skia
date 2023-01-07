@@ -9,20 +9,21 @@
 #define TestUtils_DEFINED
 
 #include "include/core/SkBitmap.h"
-#include "src/gpu/GrDataUtils.h"
+#include "src/gpu/ganesh/GrDataUtils.h"
+#include "src/gpu/ganesh/GrPixmap.h"
 #include "tests/Test.h"
 
-class GrSurfaceContext;
+namespace skgpu::v1 { class SurfaceContext; }
 class GrSurfaceProxy;
 typedef uint32_t GrColor;
 
 // Ensure that reading back from 'srcContext' as RGBA 8888 matches 'expectedPixelValues
-void TestReadPixels(skiatest::Reporter*, GrDirectContext*, GrSurfaceContext* srcContext,
+void TestReadPixels(skiatest::Reporter*, GrDirectContext*, skgpu::v1::SurfaceContext*,
                     uint32_t expectedPixelValues[], const char* testName);
 
-// See if trying to write RGBA 8888 pixels to 'dstContext' matches matches the
+// See if trying to write RGBA 8888 pixels to 'dstContext' matches the
 // expectation ('expectedToWork')
-void TestWritePixels(skiatest::Reporter*, GrDirectContext*, GrSurfaceContext* srcContext,
+void TestWritePixels(skiatest::Reporter*, GrDirectContext*, skgpu::v1::SurfaceContext*,
                      bool expectedToWork, const char* testName);
 
 // Ensure that the pixels can be copied from 'proxy' viewed as colorType, to an RGBA 8888
@@ -43,15 +44,14 @@ bool BipmapToBase64DataURI(const SkBitmap& bitmap, SkString* dst);
 using ComparePixmapsErrorReporter = void(int x, int y, const float diffs[4]);
 
 /**
- * Compares pixels pointed to by 'a' with 'infoA' and rowBytesA to pixels pointed to by 'b' with
- * 'infoB' and 'rowBytesB'.
+ * Compares pixels pointed to by 'a' to pixels pointed to by 'b'.
  *
- * If the infos have different dimensions error is called with negative coordinate values and
+ * If the pixmaps have different dimensions error is called with negative coordinate values and
  * zero diffs and no comparisons are made.
  *
  * Before comparison pixels are converted to a common color type, alpha type, and color space.
- * The color type is always 32 bit float. The alpha type is premul if one of 'infoA' and 'infoB' is
- * premul and the other is unpremul. The color space is linear sRGB if 'infoA' and 'infoB' have
+ * The color type is always 32 bit float. The alpha type is premul if one of the pixmaps is
+ * premul and the other is unpremul. The color space is linear sRGB if the pixmaps have
  * different colorspaces, otherwise their common color space is used.
  *
  * 'tolRGBA' expresses the allowed difference between pixels in the comparison space per channel. If
@@ -61,12 +61,9 @@ using ComparePixmapsErrorReporter = void(int x, int y, const float diffs[4]);
  * The function quits after a single error is reported and returns false if 'error' was called and
  * true otherwise.
  */
-bool ComparePixels(const GrImageInfo& infoA, const char* a, size_t rowBytesA,
-                   const GrImageInfo& infoB, const char* b, size_t rowBytesB,
-                   const float tolRGBA[4], std::function<ComparePixmapsErrorReporter>& error);
-
-/** Convenience version of above that takes SkPixmap inputs. */
-bool ComparePixels(const SkPixmap& a, const SkPixmap& b, const float tolRGBA[4],
+bool ComparePixels(const GrCPixmap& a,
+                   const GrCPixmap& b,
+                   const float tolRGBA[4],
                    std::function<ComparePixmapsErrorReporter>& error);
 
 /**
@@ -85,5 +82,19 @@ void CheckSingleThreadedProxyRefs(skiatest::Reporter* reporter,
                                   GrSurfaceProxy* proxy,
                                   int32_t expectedProxyRefs,
                                   int32_t expectedBackingRefs);
+
+// Makes either a SurfaceContext, SurfaceFillContext, or a SurfaceDrawContext, depending on
+// GrRenderable and the GrImageInfo.
+// The texture format is the default for the provided color type.
+std::unique_ptr<skgpu::v1::SurfaceContext> CreateSurfaceContext(
+            GrRecordingContext*,
+            const GrImageInfo&,
+            SkBackingFit = SkBackingFit::kExact,
+            GrSurfaceOrigin = kTopLeft_GrSurfaceOrigin,
+            GrRenderable = GrRenderable::kNo,
+            int sampleCount = 1,
+            GrMipmapped = GrMipmapped::kNo,
+            GrProtected = GrProtected::kNo,
+            SkBudgeted = SkBudgeted::kYes);
 
 #endif

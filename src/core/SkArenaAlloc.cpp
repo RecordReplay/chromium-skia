@@ -5,17 +5,22 @@
  * found in the LICENSE file.
  */
 
+#include "include/private/SkMalloc.h"
 #include "src/core/SkArenaAlloc.h"
+
 #include <algorithm>
 #include <new>
+
+#include "include/private/SkMalloc.h"
+#include "src/core/SkASAN.h"
 
 static char* end_chain(char*) { return nullptr; }
 
 SkArenaAlloc::SkArenaAlloc(char* block, size_t size, size_t firstHeapAllocation)
     : fDtorCursor {block}
     , fCursor     {block}
-    , fEnd        {block + ToU32(size)}
-    , fFibonacciProgression{ToU32(size), ToU32(firstHeapAllocation)}
+    , fEnd        {block + SkToU32(size)}
+    , fFibonacciProgression{SkToU32(size), SkToU32(firstHeapAllocation)}
 {
     if (size < sizeof(Footer)) {
         fEnd = fCursor = fDtorCursor = nullptr;
@@ -23,6 +28,7 @@ SkArenaAlloc::SkArenaAlloc(char* block, size_t size, size_t firstHeapAllocation)
 
     if (fCursor != nullptr) {
         this->installFooter(end_chain, 0);
+        sk_asan_poison_memory_region(fCursor, fEnd - fCursor);
     }
 }
 
@@ -38,10 +44,10 @@ void SkArenaAlloc::installFooter(FooterAction* action, uint32_t padding) {
 }
 
 char* SkArenaAlloc::SkipPod(char* footerEnd) {
-    char* objEnd = footerEnd - (sizeof(Footer) + sizeof(int32_t));
-    int32_t skip;
-    memmove(&skip, objEnd, sizeof(int32_t));
-    return objEnd - skip;
+    char* objEnd = footerEnd - (sizeof(Footer) + sizeof(uint32_t));
+    uint32_t skip;
+    memmove(&skip, objEnd, sizeof(uint32_t));
+    return objEnd - (ptrdiff_t) skip;
 }
 
 void SkArenaAlloc::RunDtorsOnBlock(char* footerEnd) {
@@ -61,10 +67,9 @@ char* SkArenaAlloc::NextBlock(char* footerEnd) {
     char* next;
     memmove(&next, objEnd, sizeof(char*));
     RunDtorsOnBlock(next);
-    delete [] objEnd;
+    sk_free(objEnd);
     return nullptr;
 }
-
 
 void SkArenaAlloc::ensureSpace(uint32_t size, uint32_t alignment) {
     constexpr uint32_t headerSize = sizeof(Footer) + sizeof(ptrdiff_t);
@@ -88,12 +93,23 @@ void SkArenaAlloc::ensureSpace(uint32_t size, uint32_t alignment) {
         allocationSize = (allocationSize + mask) & ~mask;
     }
 
-    char* newBlock = new char[allocationSize];
+    char* newBlock = static_cast<char*>(sk_malloc_throw(allocationSize, 1));
+    size_t actualAllocatedSize = sk_malloc_usable_size(newBlock);
+    // 0 means that the allocated size is not available, don't change anything
+    // then.
+    if (actualAllocatedSize) {
+        AssertRelease(actualAllocatedSize >= allocationSize);
+        allocationSize = actualAllocatedSize;
+    }
 
     auto previousDtor = fDtorCursor;
     fCursor = newBlock;
     fDtorCursor = newBlock;
     fEnd = fCursor + allocationSize;
+
+    // poison the unused bytes in the block.
+    sk_asan_poison_memory_region(fCursor, fEnd - fCursor);
+
     this->installRaw(previousDtor);
     this->installFooter(NextBlock, 0);
 }
@@ -128,16 +144,11 @@ restart:
     // Install a skip footer if needed, thus terminating a run of POD data. The calling code is
     // responsible for installing the footer after the object.
     if (needsSkipFooter) {
-        this->installRaw(ToU32(fCursor - fDtorCursor));
+        this->installRaw(SkToU32(fCursor - fDtorCursor));
         this->installFooter(SkipPod, 0);
     }
 
     return objStart;
-}
-
-static uint32_t to_uint32_t(size_t v) {
-    assert(SkTFitsIn<uint32_t>(v));
-    return (uint32_t)v;
 }
 
 SkArenaAllocWithReset::SkArenaAllocWithReset(char* block,
@@ -145,12 +156,15 @@ SkArenaAllocWithReset::SkArenaAllocWithReset(char* block,
                                              size_t firstHeapAllocation)
         : SkArenaAlloc(block, size, firstHeapAllocation)
         , fFirstBlock{block}
-        , fFirstSize{to_uint32_t(size)}
-        , fFirstHeapAllocationSize{to_uint32_t(firstHeapAllocation)} {}
+        , fFirstSize{SkToU32(size)}
+        , fFirstHeapAllocationSize{SkToU32(firstHeapAllocation)} {}
 
 void SkArenaAllocWithReset::reset() {
+    char* const    firstBlock              = fFirstBlock;
+    const uint32_t firstSize               = fFirstSize;
+    const uint32_t firstHeapAllocationSize = fFirstHeapAllocationSize;
     this->~SkArenaAllocWithReset();
-    new (this) SkArenaAllocWithReset{fFirstBlock, fFirstSize, fFirstHeapAllocationSize};
+    new (this) SkArenaAllocWithReset{firstBlock, firstSize, firstHeapAllocationSize};
 }
 
 // SkFibonacci47 is the first 47 Fibonacci numbers. Fib(47) is the largest value less than 2 ^ 32.

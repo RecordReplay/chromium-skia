@@ -7,8 +7,7 @@
 
 #include "fuzz/Fuzz.h"
 #include "fuzz/FuzzCommon.h"
-
-// CORE
+#include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColorFilter.h"
 #include "include/core/SkFontMgr.h"
@@ -20,21 +19,12 @@
 #include "include/core/SkRSXform.h"
 #include "include/core/SkRegion.h"
 #include "include/core/SkSurface.h"
-#include "include/core/SkTypeface.h"
-#include "include/docs/SkPDFDocument.h"
-#include "include/private/SkTo.h"
-#include "include/svg/SkSVGCanvas.h"
-#include "include/utils/SkNullCanvas.h"
-#include "src/core/SkOSFile.h"
-#include "src/core/SkPaintPriv.h"
-#include "src/core/SkPicturePriv.h"
-#include "tools/debugger/DebugCanvas.h"
-
-// EFFECTS
 #include "include/core/SkTextBlob.h"
+#include "include/core/SkTypeface.h"
+#include "include/core/SkVertices.h"
+#include "include/docs/SkPDFDocument.h"
 #include "include/effects/Sk1DPathEffect.h"
 #include "include/effects/Sk2DPathEffect.h"
-#include "include/effects/SkColorMatrixFilter.h"
 #include "include/effects/SkCornerPathEffect.h"
 #include "include/effects/SkDashPathEffect.h"
 #include "include/effects/SkDiscretePathEffect.h"
@@ -43,23 +33,30 @@
 #include "include/effects/SkImageFilters.h"
 #include "include/effects/SkLumaColorFilter.h"
 #include "include/effects/SkPerlinNoiseShader.h"
-#include "include/effects/SkTableColorFilter.h"
+#include "include/private/SkTo.h"
+#include "include/svg/SkSVGCanvas.h"
+#include "include/utils/SkNullCanvas.h"
+#include "src/core/SkOSFile.h"
+#include "src/core/SkPaintPriv.h"
+#include "src/core/SkPicturePriv.h"
 #include "src/core/SkReadBuffer.h"
-
-// SRC
+#include "src/utils/SkJSONWriter.h"
 #include "src/utils/SkUTF.h"
+#include "tools/UrlDataManager.h"
+#include "tools/debugger/DebugCanvas.h"
 #include "tools/flags/CommandLineFlags.h"
 
-#ifdef SK_GL
+#if SK_SUPPORT_GPU
 #include "include/gpu/GrDirectContext.h"
-#include "include/gpu/gl/GrGLFunctions.h"
-#include "src/gpu/GrDirectContextPriv.h"
-#include "src/gpu/gl/GrGLGpu.h"
-#include "src/gpu/gl/GrGLUtil.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
 #include "tools/gpu/GrContextFactory.h"
 #endif
 
-// MISC
+#ifdef SK_GL
+#include "include/gpu/gl/GrGLFunctions.h"
+#include "src/gpu/ganesh/gl/GrGLGpu.h"
+#include "src/gpu/ganesh/gl/GrGLUtil.h"
+#endif
 
 #include <iostream>
 #include <utility>
@@ -111,13 +108,13 @@ static sk_sp<SkColorFilter> make_fuzz_colorfilter(Fuzz* fuzz, int depth) {
         }
         case 3: {
             float array[20];
-            fuzz->nextN(array, SK_ARRAY_COUNT(array));
+            fuzz->nextN(array, std::size(array));
             return SkColorFilters::Matrix(array);
         }
         case 4: {
             SkColor mul, add;
             fuzz->next(&mul, &add);
-            return SkColorMatrixFilter::MakeLightingFilter(mul, add);
+            return SkColorFilters::Lighting(mul, add);
         }
         case 5: {
             bool grayscale;
@@ -133,19 +130,19 @@ static sk_sp<SkColorFilter> make_fuzz_colorfilter(Fuzz* fuzz, int depth) {
             return SkLumaColorFilter::Make();
         case 7: {
             uint8_t table[256];
-            fuzz->nextN(table, SK_ARRAY_COUNT(table));
-            return SkTableColorFilter::Make(table);
+            fuzz->nextN(table, std::size(table));
+            return SkColorFilters::Table(table);
         }
         case 8: {
             uint8_t tableA[256];
             uint8_t tableR[256];
             uint8_t tableG[256];
             uint8_t tableB[256];
-            fuzz->nextN(tableA, SK_ARRAY_COUNT(tableA));
-            fuzz->nextN(tableR, SK_ARRAY_COUNT(tableR));
-            fuzz->nextN(tableG, SK_ARRAY_COUNT(tableG));
-            fuzz->nextN(tableB, SK_ARRAY_COUNT(tableB));
-            return SkTableColorFilter::MakeARGB(tableA, tableR, tableG, tableB);
+            fuzz->nextN(tableA, std::size(tableA));
+            fuzz->nextN(tableR, std::size(tableR));
+            fuzz->nextN(tableG, std::size(tableG));
+            fuzz->nextN(tableB, std::size(tableB));
+            return SkColorFilters::TableARGB(tableA, tableR, tableG, tableB);
         }
         default:
             SkASSERT(false);
@@ -396,7 +393,7 @@ static sk_sp<SkPathEffect> make_fuzz_patheffect(Fuzz* fuzz, int depth) {
             fuzz->next(&phase);
             SkScalar intervals[20];
             int count;
-            fuzz->nextRange(&count, 0, (int)SK_ARRAY_COUNT(intervals));
+            fuzz->nextRange(&count, 0, (int)std::size(intervals));
             fuzz->nextN(intervals, count);
             return SkDashPathEffect::Make(intervals, count, phase);
         }
@@ -512,6 +509,20 @@ static sk_sp<SkImageFilter> make_fuzz_lighting_imagefilter(Fuzz* fuzz, int depth
 
 static void fuzz_paint(Fuzz* fuzz, SkPaint* paint, int depth);
 
+static SkSamplingOptions next_sampling(Fuzz* fuzz) {
+    if (fuzz->nextBool()) {
+        float B, C;
+        fuzz->next(&B, &C);
+        return SkSamplingOptions({B, C});
+    } else {
+        SkFilterMode fm;
+        SkMipmapMode mm;
+        fuzz->nextEnum(&fm, SkFilterMode::kLast);
+        fuzz->nextEnum(&mm, SkMipmapMode::kLast);
+        return SkSamplingOptions(fm, mm);
+    }
+}
+
 static sk_sp<SkImageFilter> make_fuzz_imageFilter(Fuzz* fuzz, int depth) {
     if (depth <= 0) {
         return nullptr;
@@ -536,9 +547,7 @@ static sk_sp<SkImageFilter> make_fuzz_imageFilter(Fuzz* fuzz, int depth) {
         case 2: {
             SkMatrix matrix;
             FuzzNiceMatrix(fuzz, &matrix);
-            SkFilterQuality quality;
-            fuzz->nextEnum(&quality, SkFilterQuality::kLast_SkFilterQuality);
-            auto sampling = SkSamplingOptions(quality);
+            const auto sampling = next_sampling(fuzz);
             sk_sp<SkImageFilter> input = make_fuzz_imageFilter(fuzz, depth - 1);
             return SkImageFilters::MatrixTransform(matrix, sampling, std::move(input));
         }
@@ -628,11 +637,8 @@ static sk_sp<SkImageFilter> make_fuzz_imageFilter(Fuzz* fuzz, int depth) {
         case 10: {
             sk_sp<SkImage> image = make_fuzz_image(fuzz);
             SkRect srcRect, dstRect;
-            SkFilterQuality filterQuality;
             fuzz->next(&srcRect, &dstRect);
-            fuzz->nextEnum(&filterQuality, SkFilterQuality::kLast_SkFilterQuality);
-            return SkImageFilters::Image(std::move(image), srcRect, dstRect,
-                                         SkSamplingOptions(filterQuality));
+            return SkImageFilters::Image(std::move(image), srcRect, dstRect, next_sampling(fuzz));
         }
         case 11:
             return make_fuzz_lighting_imagefilter(fuzz, depth - 1);
@@ -892,7 +898,7 @@ static SkTDArray<uint8_t> make_fuzz_text(Fuzz* fuzz, const SkFont& font, SkTextE
         {0x0400, 0x0500},
     };
     int32_t count = 0;
-    for (size_t i = 0; i < SK_ARRAY_COUNT(ranges); ++i) {
+    for (size_t i = 0; i < std::size(ranges); ++i) {
         count += (ranges[i][1] - ranges[i][0]);
     }
     constexpr int kMaxLength = kMaxGlyphCount;
@@ -902,7 +908,7 @@ static SkTDArray<uint8_t> make_fuzz_text(Fuzz* fuzz, const SkFont& font, SkTextE
     for (int j = 0; j < length; ++j) {
         int32_t value;
         fuzz->nextRange(&value, 0, count - 1);
-        for (size_t i = 0; i < SK_ARRAY_COUNT(ranges); ++i) {
+        for (size_t i = 0; i < std::size(ranges); ++i) {
             if (value + ranges[i][0] < ranges[i][1]) {
                 buffer[j] = value + ranges[i][0];
                 break;
@@ -961,14 +967,14 @@ static sk_sp<SkTextBlob> make_fuzz_textblob(Fuzz* fuzz) {
         SkTextEncoding encoding = fuzz_paint_text_encoding(fuzz);
         font.setEdging(make_fuzz_t<bool>(fuzz) ? SkFont::Edging::kAlias : SkFont::Edging::kAntiAlias);
         SkTDArray<uint8_t> text = make_fuzz_text(fuzz, font, encoding);
-        int glyphCount = font.countText(text.begin(), SkToSizeT(text.count()), encoding);
+        int glyphCount = font.countText(text.begin(), SkToSizeT(text.size()), encoding);
         SkASSERT(glyphCount <= kMaxGlyphCount);
         SkScalar x, y;
         const SkTextBlobBuilder::RunBuffer* buffer;
         uint8_t runType;
         fuzz->nextRange(&runType, (uint8_t)0, (uint8_t)2);
         const void* textPtr = text.begin();
-        size_t textLen =  SkToSizeT(text.count());
+        size_t textLen =  SkToSizeT(text.size());
         switch (runType) {
             case 0:
                 fuzz->next(&x, &y);
@@ -1004,7 +1010,7 @@ static void fuzz_canvas(Fuzz* fuzz, SkCanvas* canvas, int depth = 9) {
     SkAutoCanvasRestore autoCanvasRestore(canvas, false);
     unsigned N;
     fuzz->nextRange(&N, 0, 2000);
-    for (unsigned i = 0; i < N; ++i) {
+    for (unsigned loop = 0; loop < N; ++loop) {
         if (fuzz->exhausted()) {
             return;
         }
@@ -1322,7 +1328,7 @@ static void fuzz_canvas(Fuzz* fuzz, SkCanvas* canvas, int depth = 9) {
                 SkScalar x, y;
                 fuzz->next(&x, &y);
                 SkTDArray<uint8_t> text = make_fuzz_text(fuzz, font, encoding);
-                canvas->drawSimpleText(text.begin(), SkToSizeT(text.count()), encoding, x, y,
+                canvas->drawSimpleText(text.begin(), SkToSizeT(text.size()), encoding, x, y,
                                        font, paint);
                 break;
             }
@@ -1394,8 +1400,8 @@ static void fuzz_canvas(Fuzz* fuzz, SkCanvas* canvas, int depth = 9) {
                 uint16_t indices[kMaxCount * 2];
                 if (make_fuzz_t<bool>(fuzz)) {
                     fuzz->nextRange(&indexCount, vertexCount, vertexCount + kMaxCount);
-                    for (int i = 0; i < indexCount; ++i) {
-                        fuzz->nextRange(&indices[i], 0, vertexCount - 1);
+                    for (int index = 0; index < indexCount; ++index) {
+                        fuzz->nextRange(&indices[index], 0, vertexCount - 1);
                     }
                 }
                 canvas->drawVertices(SkVertices::MakeCopy(vertexMode, vertexCount, vertices,
@@ -1611,8 +1617,24 @@ DEF_FUZZ(SerializedImageFilter, fuzz) {
     canvas.restore();
 }
 
-#ifdef SK_GL
+#if SK_SUPPORT_GPU
+static void fuzz_ganesh(Fuzz* fuzz, GrDirectContext* context) {
+    SkASSERT(context);
+    auto surface = SkSurface::MakeRenderTarget(
+            context,
+            SkBudgeted::kNo,
+            SkImageInfo::Make(kCanvasSize, kRGBA_8888_SkColorType, kPremul_SkAlphaType));
+    SkASSERT(surface && surface->getCanvas());
+    fuzz_canvas(fuzz, surface->getCanvas());
+}
 
+DEF_FUZZ(MockGPUCanvas, fuzz) {
+    sk_gpu_test::GrContextFactory f;
+    fuzz_ganesh(fuzz, f.get(sk_gpu_test::GrContextFactory::kMock_ContextType));
+}
+#endif
+
+#ifdef SK_GL
 static void dump_GPU_info(GrDirectContext* context) {
     const GrGLInterface* gl = static_cast<GrGLGpu*>(context->priv().getGpu())
                                     ->glInterface();
@@ -1627,16 +1649,6 @@ static void dump_GPU_info(GrDirectContext* context) {
     SkDebugf("GL_VERSION %s\n", (const char*) output);
 }
 
-static void fuzz_ganesh(Fuzz* fuzz, GrDirectContext* context) {
-    SkASSERT(context);
-    auto surface = SkSurface::MakeRenderTarget(
-            context,
-            SkBudgeted::kNo,
-            SkImageInfo::Make(kCanvasSize, kRGBA_8888_SkColorType, kPremul_SkAlphaType));
-    SkASSERT(surface && surface->getCanvas());
-    fuzz_canvas(fuzz, surface->getCanvas());
-}
-
 DEF_FUZZ(NativeGLCanvas, fuzz) {
     sk_gpu_test::GrContextFactory f;
     auto context = f.get(sk_gpu_test::GrContextFactory::kGL_ContextType);
@@ -1647,11 +1659,6 @@ DEF_FUZZ(NativeGLCanvas, fuzz) {
         dump_GPU_info(context);
     }
     fuzz_ganesh(fuzz, context);
-}
-
-DEF_FUZZ(MockGPUCanvas, fuzz) {
-    sk_gpu_test::GrContextFactory f;
-    fuzz_ganesh(fuzz, f.get(sk_gpu_test::GrContextFactory::kMock_ContextType));
 }
 #endif
 

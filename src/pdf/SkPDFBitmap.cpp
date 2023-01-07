@@ -9,6 +9,7 @@
 
 #include "include/core/SkBitmap.h"
 #include "include/core/SkData.h"
+#include "include/core/SkEncodedImageFormat.h"
 #include "include/core/SkExecutor.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkStream.h"
@@ -113,7 +114,7 @@ static void do_deflated_alpha(const SkPixmap& pm, SkPDFDocument* doc, SkPDFIndir
         const uint32_t* stop = ptr + pm.height() * pm.width();
 
         uint8_t byteBuffer[4092];
-        uint8_t* bufferStop = byteBuffer + SK_ARRAY_COUNT(byteBuffer);
+        uint8_t* bufferStop = byteBuffer + std::size(byteBuffer);
         uint8_t* dst = byteBuffer;
         while (ptr != stop) {
             *dst++ = 0xFF & ((*ptr++) >> SK_BGRA_A32_SHIFT);
@@ -161,8 +162,8 @@ static void do_deflated_image(const SkPixmap& pm,
             SkASSERT(pm.colorType() == kBGRA_8888_SkColorType);
             SkASSERT(pm.rowBytes() == (size_t)pm.width() * 4);
             uint8_t byteBuffer[3072];
-            static_assert(SK_ARRAY_COUNT(byteBuffer) % 3 == 0, "");
-            uint8_t* bufferStop = byteBuffer + SK_ARRAY_COUNT(byteBuffer);
+            static_assert(std::size(byteBuffer) % 3 == 0, "");
+            uint8_t* bufferStop = byteBuffer + std::size(byteBuffer);
             uint8_t* dst = byteBuffer;
             for (int y = 0; y < pm.height(); ++y) {
                 const SkColor* src = pm.addr32(0, y);
@@ -255,17 +256,19 @@ void serialize_image(const SkImage* img,
     SkASSERT(doc);
     SkASSERT(encodingQuality >= 0);
     SkISize dimensions = img->dimensions();
-    sk_sp<SkData> data = img->refEncodedData();
-    if (data && do_jpeg(std::move(data), doc, dimensions, ref)) {
-        return;
+    if (sk_sp<SkData> data = img->refEncodedData()) {
+        if (do_jpeg(std::move(data), doc, dimensions, ref)) {
+            return;
+        }
     }
     SkBitmap bm = to_pixels(img);
     const SkPixmap& pm = bm.pixmap();
     bool isOpaque = pm.isOpaque() || pm.computeIsOpaque();
     if (encodingQuality <= 100 && isOpaque) {
-        sk_sp<SkData> data = img->encodeToData(SkEncodedImageFormat::kJPEG, encodingQuality);
-        if (data && do_jpeg(std::move(data), doc, dimensions, ref)) {
-            return;
+        if (sk_sp<SkData> data = img->encodeToData(SkEncodedImageFormat::kJPEG, encodingQuality)) {
+            if (do_jpeg(std::move(data), doc, dimensions, ref)) {
+                return;
+            }
         }
     }
     do_deflated_image(pm, doc, isOpaque, ref);

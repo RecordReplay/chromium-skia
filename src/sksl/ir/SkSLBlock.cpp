@@ -6,42 +6,66 @@
  */
 
 #include "src/sksl/ir/SkSLBlock.h"
-#include "src/sksl/ir/SkSLNop.h"
 
-#include <iterator>
+#include "src/sksl/ir/SkSLNop.h"
+#include "src/sksl/ir/SkSLSymbolTable.h"
+
+#include <type_traits>
 
 namespace SkSL {
 
-static void eliminate_empty_statements(StatementArray* statements) {
-    // Remove all the statements which are empty.
-    std::unique_ptr<Statement>* iter = std::remove_if(
-            statements->begin(), statements->end(), [](const std::unique_ptr<Statement>& stmt) {
-                return stmt->isEmpty();
-            });
+std::unique_ptr<Statement> Block::Make(Position pos,
+                                       StatementArray statements,
+                                       Kind kind,
+                                       std::shared_ptr<SymbolTable> symbols) {
+    // We can't simplify away braces or populated symbol tables.
+    if (kind == Kind::kBracedScope || (symbols && symbols->count())) {
+        return std::make_unique<Block>(pos, std::move(statements), kind, std::move(symbols));
+    }
 
-    // Shrink the statement array to match.
-    statements->resize(std::distance(statements->begin(), iter));
-}
-
-std::unique_ptr<Statement> Block::MakeUnscoped(int offset, StatementArray statements) {
-    eliminate_empty_statements(&statements);
+    // If the Block is completely empty, synthesize a Nop.
     if (statements.empty()) {
         return Nop::Make();
     }
-    if (statements.size() == 1) {
-        return std::move(statements.front());
+
+    if (statements.size() > 1) {
+        // The statement array contains multiple statements, but some of those might be no-ops.
+        // If the statement array only contains one real statement, we can return that directly and
+        // avoid creating an additional Block node.
+        std::unique_ptr<Statement>* foundStatement = nullptr;
+        for (std::unique_ptr<Statement>& stmt : statements) {
+            if (!stmt->isEmpty()) {
+                if (!foundStatement) {
+                    // We found a single non-empty statement. Remember it and keep looking.
+                    foundStatement = &stmt;
+                    continue;
+                }
+                // We found more than one non-empty statement. We actually do need a Block.
+                return std::make_unique<Block>(pos, std::move(statements), kind,
+                                               /*symbols=*/nullptr);
+            }
+        }
+
+        // The array wrapped one valid Statement. Avoid allocating a Block by returning it directly.
+        if (foundStatement) {
+            return std::move(*foundStatement);
+        }
+
+        // The statement array contained nothing but empty statements!
+        // In this case, we don't actually need to allocate a Block.
+        // We can just return one of those empty statements. Fall through to...
     }
-    return std::make_unique<Block>(offset, std::move(statements),
-                                   /*symbols=*/nullptr, /*isScope=*/false);
+
+    return std::move(statements.front());
 }
 
-std::unique_ptr<Block> Block::Make(int offset,
-                                   StatementArray statements,
-                                   std::shared_ptr<SymbolTable> symbols,
-                                   bool isScope) {
-    // Nothing to optimize here--eliminate_empty_statements doesn't actually improve the generated
+std::unique_ptr<Block> Block::MakeBlock(Position pos,
+                                        StatementArray statements,
+                                        Kind kind,
+                                        std::shared_ptr<SymbolTable> symbols) {
+    // Nothing to optimize here--eliminating empty statements doesn't actually improve the generated
     // code, and we promise to return a Block.
-    return std::make_unique<Block>(offset, std::move(statements), std::move(symbols), isScope);
+    return std::make_unique<Block>(pos, std::move(statements), kind, std::move(symbols));
 }
 
 std::unique_ptr<Statement> Block::clone() const {
@@ -50,22 +74,26 @@ std::unique_ptr<Statement> Block::clone() const {
     for (const std::unique_ptr<Statement>& stmt : this->children()) {
         cloned.push_back(stmt->clone());
     }
-    return std::make_unique<Block>(fOffset,
+    return std::make_unique<Block>(fPosition,
                                    std::move(cloned),
-                                   SymbolTable::WrapIfBuiltin(this->symbolTable()),
-                                   this->isScope());
+                                   fBlockKind,
+                                   SymbolTable::WrapIfBuiltin(this->symbolTable()));
 }
 
-String Block::description() const {
-    String result;
-    if (fIsScope) {
+std::string Block::description() const {
+    std::string result;
+
+    // Write scope markers if this block is a scope, or if the block is empty (since we need to emit
+    // something here to make the code valid).
+    bool isScope = this->isScope() || this->isEmpty();
+    if (isScope) {
         result += "{";
     }
     for (const std::unique_ptr<Statement>& stmt : this->children()) {
         result += "\n";
         result += stmt->description();
     }
-    result += fIsScope ? "\n}\n" : "\n";
+    result += isScope ? "\n}\n" : "\n";
     return result;
 }
 

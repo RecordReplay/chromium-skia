@@ -5,9 +5,21 @@
  * found in the LICENSE file.
  */
 
+#include "include/core/SkAlphaType.h"
 #include "include/core/SkBitmap.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkColorType.h"
+#include "include/core/SkFlattenable.h"
+#include "include/core/SkImageFilter.h"
+#include "include/core/SkImageInfo.h"
+#include "include/core/SkM44.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkTypes.h"
 #include "include/effects/SkImageFilters.h"
-#include "include/private/SkColorData.h"
+#include "include/effects/SkRuntimeEffect.h"
 #include "include/private/SkTPin.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkReadBuffer.h"
@@ -15,15 +27,18 @@
 #include "src/core/SkValidationUtils.h"
 #include "src/core/SkWriteBuffer.h"
 
-////////////////////////////////////////////////////////////////////////////////
+#include <algorithm>
+#include <memory>
+#include <utility>
+
 #if SK_SUPPORT_GPU
-#include "src/gpu/GrColorSpaceXform.h"
-#include "src/gpu/effects/GrTextureEffect.h"
-#include "src/gpu/effects/generated/GrMagnifierEffect.h"
-#include "src/gpu/glsl/GrGLSLFragmentProcessor.h"
-#include "src/gpu/glsl/GrGLSLFragmentShaderBuilder.h"
-#include "src/gpu/glsl/GrGLSLProgramDataManager.h"
-#include "src/gpu/glsl/GrGLSLUniformHandler.h"
+#include "src/core/SkRuntimeEffectPriv.h"
+#include "src/gpu/ganesh/GrColorSpaceXform.h"
+#include "src/gpu/ganesh/GrFragmentProcessor.h"
+#include "src/gpu/ganesh/GrSurfaceProxy.h"
+#include "src/gpu/ganesh/GrSurfaceProxyView.h"
+#include "src/gpu/ganesh/effects/GrSkSLFP.h"
+#include "src/gpu/ganesh/effects/GrTextureEffect.h"
 #endif
 
 namespace {
@@ -94,6 +109,61 @@ void SkMagnifierImageFilter::flatten(SkWriteBuffer& buffer) const {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#if SK_SUPPORT_GPU
+static std::unique_ptr<GrFragmentProcessor> make_magnifier_fp(
+        std::unique_ptr<GrFragmentProcessor> input,
+        SkIRect bounds,
+        SkRect srcRect,
+        float xInvZoom,
+        float yInvZoom,
+        float xInvInset,
+        float yInvInset) {
+    static const SkRuntimeEffect* effect = SkMakeRuntimeEffect(SkRuntimeEffect::MakeForShader,
+        "uniform shader src;"
+        "uniform float4 boundsUniform;"
+        "uniform float  xInvZoom;"
+        "uniform float  yInvZoom;"
+        "uniform float  xInvInset;"
+        "uniform float  yInvInset;"
+        "uniform half2  offset;"
+
+        "half4 main(float2 coord) {"
+            "float2 zoom_coord = offset + coord * float2(xInvZoom, yInvZoom);"
+            "float2 delta = (coord - boundsUniform.xy) * boundsUniform.zw;"
+            "delta = min(delta, float2(1.0) - delta);"
+            "delta *= float2(xInvInset, yInvInset);"
+
+            "float weight = 0.0;"
+            "if (delta.s < 2.0 && delta.t < 2.0) {"
+                "delta = float2(2.0) - delta;"
+                "float dist = length(delta);"
+                "dist = max(2.0 - dist, 0.0);"
+                "weight = min(dist * dist, 1.0);"
+            "} else {"
+                "float2 delta_squared = delta * delta;"
+                "weight = min(min(delta_squared.x, delta_squared.y), 1.0);"
+            "}"
+
+            "return src.eval(mix(coord, zoom_coord, weight));"
+        "}"
+    );
+
+    SkV4 boundsUniform = {static_cast<float>(bounds.x()),
+                          static_cast<float>(bounds.y()),
+                          1.f / bounds.width(),
+                          1.f / bounds.height()};
+
+    return GrSkSLFP::Make(effect, "magnifier_fp", /*inputFP=*/nullptr, GrSkSLFP::OptFlags::kNone,
+                          "src", std::move(input),
+                          "boundsUniform", boundsUniform,
+                          "xInvZoom", xInvZoom,
+                          "yInvZoom", yInvZoom,
+                          "xInvInset", xInvInset,
+                          "yInvInset", yInvInset,
+                          "offset", SkV2{srcRect.x(), srcRect.y()});
+}
+#endif
+
 sk_sp<SkSpecialImage> SkMagnifierImageFilter::onFilterImage(const Context& ctx,
                                                             SkIPoint* offset) const {
     SkIPoint inputOffset = SkIPoint::Make(0, 0);
@@ -124,6 +194,7 @@ sk_sp<SkSpecialImage> SkMagnifierImageFilter::onFilterImage(const Context& ctx,
         SkASSERT(inputView.asTextureProxy());
 
         const auto isProtected = inputView.proxy()->isProtected();
+        const auto origin = inputView.origin();
 
         offset->fX = bounds.left();
         offset->fY = bounds.top();
@@ -136,13 +207,14 @@ sk_sp<SkSpecialImage> SkMagnifierImageFilter::onFilterImage(const Context& ctx,
                                              (1.f - invYZoom) * input->subset().y());
         auto inputFP = GrTextureEffect::Make(std::move(inputView), kPremul_SkAlphaType);
 
-        auto fp = GrMagnifierEffect::Make(std::move(inputFP),
-                                          bounds,
-                                          srcRect,
-                                          invXZoom,
-                                          invYZoom,
-                                          bounds.width() * invInset,
-                                          bounds.height() * invInset);
+        auto fp = make_magnifier_fp(std::move(inputFP),
+                                    bounds,
+                                    srcRect,
+                                    invXZoom,
+                                    invYZoom,
+                                    bounds.width() * invInset,
+                                    bounds.height() * invInset);
+
         fp = GrColorSpaceXformEffect::Make(std::move(fp),
                                            input->getColorSpace(), input->alphaType(),
                                            ctx.colorSpace(), kPremul_SkAlphaType);
@@ -151,7 +223,7 @@ sk_sp<SkSpecialImage> SkMagnifierImageFilter::onFilterImage(const Context& ctx,
         }
 
         return DrawWithFP(context, std::move(fp), bounds, ctx.colorType(), ctx.colorSpace(),
-                          isProtected);
+                          ctx.surfaceProps(), origin, isProtected);
     }
 #endif
 
@@ -220,5 +292,5 @@ sk_sp<SkSpecialImage> SkMagnifierImageFilter::onFilterImage(const Context& ctx,
     offset->fX = bounds.left();
     offset->fY = bounds.top();
     return SkSpecialImage::MakeFromRaster(SkIRect::MakeWH(bounds.width(), bounds.height()),
-                                          dst);
+                                          dst, ctx.surfaceProps());
 }

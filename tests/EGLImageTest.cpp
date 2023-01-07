@@ -5,22 +5,25 @@
  * found in the LICENSE file.
  */
 
-#include "include/gpu/GrDirectContext.h"
-#include "src/gpu/GrDirectContextPriv.h"
-#include "src/gpu/GrProxyProvider.h"
-#include "src/gpu/GrShaderCaps.h"
-#include "src/gpu/GrSurfaceDrawContext.h"
-#include "src/gpu/GrTexture.h"
-#include "src/gpu/GrTextureProxyPriv.h"
-#include "src/gpu/gl/GrGLGpu.h"
-#include "src/gpu/gl/GrGLUtil.h"
+
 #include "tests/Test.h"
+
+
+#ifdef SK_GL
+#include "include/core/SkColorSpace.h"
+#include "include/gpu/GrDirectContext.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrProxyProvider.h"
+#include "src/gpu/ganesh/GrShaderCaps.h"
+#include "src/gpu/ganesh/GrTexture.h"
+#include "src/gpu/ganesh/GrTextureProxyPriv.h"
+#include "src/gpu/ganesh/SurfaceFillContext.h"
+#include "src/gpu/ganesh/gl/GrGLGpu.h"
+#include "src/gpu/ganesh/gl/GrGLUtil.h"
 #include "tests/TestUtils.h"
 #include "tools/gpu/GrContextFactory.h"
 #include "tools/gpu/ManagedBackendTexture.h"
 #include "tools/gpu/gl/GLTestContext.h"
-
-#ifdef SK_GL
 
 using sk_gpu_test::GLTestContext;
 
@@ -42,7 +45,10 @@ static void cleanup(GLTestContext* glctx0,
     }
 }
 
-DEF_GPUTEST_FOR_GL_RENDERING_CONTEXTS(EGLImageTest, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_GL_RENDERING_CONTEXTS(EGLImageTest,
+                                          reporter,
+                                          ctxInfo,
+                                          CtsEnforcement::kApiLevel_T) {
     auto context0 = ctxInfo.directContext();
     sk_gpu_test::GLTestContext* glCtx0 = ctxInfo.glContext();
 
@@ -53,7 +59,7 @@ DEF_GPUTEST_FOR_GL_RENDERING_CONTEXTS(EGLImageTest, reporter, ctxInfo) {
         return;
     }
     GrGLGpu* gpu0 = static_cast<GrGLGpu*>(context0->priv().getGpu());
-    if (!gpu0->glCaps().shaderCaps()->externalTextureSupport()) {
+    if (!gpu0->glCaps().shaderCaps()->fExternalTextureSupport) {
         return;
     }
 
@@ -83,9 +89,13 @@ DEF_GPUTEST_FOR_GL_RENDERING_CONTEXTS(EGLImageTest, reporter, ctxInfo) {
     context1->flushAndSubmit();
     static const int kSize = 100;
 
-    auto mbet = sk_gpu_test::ManagedBackendTexture::MakeWithoutData(
-            context1.get(), kSize, kSize, kRGBA_8888_SkColorType, GrMipmapped::kNo,
-            GrRenderable::kNo, GrProtected::kNo);
+    auto mbet = sk_gpu_test::ManagedBackendTexture::MakeWithoutData(context1.get(),
+                                                                    kSize,
+                                                                    kSize,
+                                                                    kRGBA_8888_SkColorType,
+                                                                    GrMipmapped::kNo,
+                                                                    GrRenderable::kNo,
+                                                                    GrProtected::kNo);
 
     if (!mbet) {
         ERRORF(reporter, "Error creating texture for EGL Image");
@@ -162,13 +172,13 @@ DEF_GPUTEST_FOR_GL_RENDERING_CONTEXTS(EGLImageTest, reporter, ctxInfo) {
         cleanup(glCtx0, externalTexture.fID, glCtx1.get(), context1, image);
         return;
     }
-    GrSwizzle swizzle = context0->priv().caps()->getReadSwizzle(texProxy->backendFormat(),
-                                                                colorInfo.colorType());
+    skgpu::Swizzle swizzle = context0->priv().caps()->getReadSwizzle(texProxy->backendFormat(),
+                                                                     colorInfo.colorType());
     GrSurfaceProxyView view(std::move(texProxy), origin, swizzle);
-    auto surfaceContext = GrSurfaceContext::Make(context0, std::move(view), colorInfo);
+    auto surfaceContext = context0->priv().makeSC(std::move(view), colorInfo);
 
     if (!surfaceContext) {
-        ERRORF(reporter, "Error wrapping external texture in GrSurfaceContext.");
+        ERRORF(reporter, "Error wrapping external texture in SurfaceContext.");
         cleanup(glCtx0, externalTexture.fID, glCtx1.get(), context1, image);
         return;
     }
@@ -184,12 +194,11 @@ DEF_GPUTEST_FOR_GL_RENDERING_CONTEXTS(EGLImageTest, reporter, ctxInfo) {
 
     // Should not be able to wrap as a RT
     {
-        auto temp = GrSurfaceFillContext::MakeFromBackendTexture(context0,
-                                                                 colorInfo,
-                                                                 backendTex,
-                                                                 1,
-                                                                 origin,
-                                                                 /*release helper*/ nullptr);
+        auto temp = context0->priv().makeSFCFromBackendTexture(colorInfo,
+                                                               backendTex,
+                                                               1,
+                                                               origin,
+                                                               /*release helper*/ nullptr);
         if (temp) {
             ERRORF(reporter, "Should not be able to wrap an EXTERNAL texture as a RT.");
         }
@@ -197,7 +206,7 @@ DEF_GPUTEST_FOR_GL_RENDERING_CONTEXTS(EGLImageTest, reporter, ctxInfo) {
 
     //TestReadPixels(reporter, context0, surfaceContext.get(), pixels.get(), "EGLImageTest-read");
 
-    SkDebugf("type: %d\n", surfaceContext->asTextureProxy()->textureType());
+    SkDebugf("type: %d\n", (int)surfaceContext->asTextureProxy()->textureType());
     // We should not be able to write to an EXTERNAL texture
     TestWritePixels(reporter, context0, surfaceContext.get(), false, "EGLImageTest-write");
 

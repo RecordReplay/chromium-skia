@@ -6,13 +6,20 @@
  */
 
 #include "include/core/SkCanvas.h"
+#include "include/core/SkFlattenable.h"
+#include "include/core/SkImageFilter.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkTypes.h"
 #include "include/effects/SkImageFilters.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkSpecialImage.h"
 #include "src/core/SkSpecialSurface.h"
-#include "src/core/SkValidationUtils.h"
-#include "src/core/SkWriteBuffer.h"
+
+#include <memory>
 
 namespace {
 
@@ -26,7 +33,7 @@ public:
 
 protected:
     sk_sp<SkSpecialImage> onFilterImage(const Context&, SkIPoint* offset) const override;
-    bool onCanHandleComplexCTM() const override { return true; }
+    MatrixCapability onGetCTMCapability() const override { return MatrixCapability::kComplex; }
 
 private:
     friend void ::SkRegisterMergeImageFilterFlattenable();
@@ -114,7 +121,7 @@ sk_sp<SkSpecialImage> SkMergeImageFilter::onFilterImage(const Context& ctx,
         }
 
         inputs[i]->draw(canvas,
-                        SkIntToScalar(offsets[i].x() - x0), SkIntToScalar(offsets[i].y() - y0));
+                        SkIntToScalar(offsets[i].x()) - x0, SkIntToScalar(offsets[i].y()) - y0);
     }
 
     offset->fX = bounds.left();

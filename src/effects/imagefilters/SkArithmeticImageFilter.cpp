@@ -5,30 +5,54 @@
  * found in the LICENSE file.
  */
 
+#include "include/core/SkAlphaType.h"
 #include "include/core/SkBitmap.h"
+#include "include/core/SkBlendMode.h"
 #include "include/core/SkCanvas.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkFlattenable.h"
+#include "include/core/SkImageFilter.h"
+#include "include/core/SkImageInfo.h"
+#include "include/core/SkM44.h"
+#include "include/core/SkMatrix.h"
+#include "include/core/SkPaint.h"
+#include "include/core/SkPixmap.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkRegion.h"
+#include "include/core/SkSamplingOptions.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkTypes.h"
 #include "include/effects/SkImageFilters.h"
-#include "include/private/SkNx.h"
+#include "include/effects/SkRuntimeEffect.h"
+#include "include/private/SkColorData.h"
+#include "include/private/SkVx.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkReadBuffer.h"
+#include "src/core/SkRuntimeEffectPriv.h"
 #include "src/core/SkSpecialImage.h"
 #include "src/core/SkSpecialSurface.h"
 #include "src/core/SkWriteBuffer.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <utility>
+
 #if SK_SUPPORT_GPU
-#include "include/effects/SkRuntimeEffect.h"
 #include "include/gpu/GrRecordingContext.h"
-#include "src/gpu/GrColorSpaceXform.h"
-#include "src/gpu/GrRecordingContextPriv.h"
-#include "src/gpu/GrSurfaceDrawContext.h"
-#include "src/gpu/GrTextureProxy.h"
-#include "src/gpu/SkGr.h"
-#include "src/gpu/effects/generated/GrArithmeticProcessor.h"
-#include "src/gpu/effects/generated/GrConstColorProcessor.h"
-#include "src/gpu/glsl/GrGLSLFragmentProcessor.h"
-#include "src/gpu/glsl/GrGLSLFragmentShaderBuilder.h"
-#include "src/gpu/glsl/GrGLSLProgramDataManager.h"
-#include "src/gpu/glsl/GrGLSLUniformHandler.h"
+#include "include/gpu/GrTypes.h"
+#include "src/gpu/ganesh/GrColorSpaceXform.h"
+#include "src/gpu/ganesh/GrFragmentProcessor.h"
+#include "src/gpu/ganesh/GrImageInfo.h"
+#include "src/gpu/ganesh/GrRecordingContextPriv.h"
+#include "src/gpu/ganesh/GrSamplerState.h"
+#include "src/gpu/ganesh/GrSurfaceProxy.h"
+#include "src/gpu/ganesh/GrSurfaceProxyView.h"
+#include "src/gpu/ganesh/SurfaceFillContext.h"
+#include "src/gpu/ganesh/effects/GrSkSLFP.h"
+#include "src/gpu/ganesh/effects/GrTextureEffect.h"
 #endif
 
 namespace {
@@ -64,7 +88,7 @@ private:
     friend void ::SkRegisterArithmeticImageFilterFlattenable();
     SK_FLATTENABLE_HOOKS(SkArithmeticImageFilter)
 
-    bool affectsTransparentBlack() const override { return !SkScalarNearlyZero(fK[3]); }
+    bool onAffectsTransparentBlack() const override { return !SkScalarNearlyZero(fK[3]); }
 
     SkV4 fK;
     bool fEnforcePMColor;
@@ -134,42 +158,38 @@ void SkArithmeticImageFilter::flatten(SkWriteBuffer& buffer) const {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-static Sk4f pin(float min, const Sk4f& val, float max) {
-    return Sk4f::Max(min, Sk4f::Min(val, max));
-}
-
 template <bool EnforcePMColor>
 void arith_span(const SkV4& k, SkPMColor dst[], const SkPMColor src[], int count) {
-    const Sk4f k1 = k[0] * (1/255.0f),
-               k2 = k[1],
-               k3 = k[2],
-               k4 = k[3] * 255.0f + 0.5f;
+    const skvx::float4 k1 = k[0] * (1/255.0f),
+                       k2 = k[1],
+                       k3 = k[2],
+                       k4 = k[3] * 255.0f + 0.5f;
 
     for (int i = 0; i < count; i++) {
-        Sk4f s = SkNx_cast<float>(Sk4b::Load(src+i)),
-             d = SkNx_cast<float>(Sk4b::Load(dst+i)),
-             r = pin(0, k1*s*d + k2*s + k3*d + k4, 255);
+        skvx::float4 s = skvx::cast<float>(skvx::byte4::Load(src+i)),
+                     d = skvx::cast<float>(skvx::byte4::Load(dst+i)),
+                     r = pin(k1*s*d + k2*s + k3*d + k4, skvx::float4(0.f), skvx::float4(255.f));
         if (EnforcePMColor) {
-            Sk4f a = SkNx_shuffle<3,3,3,3>(r);
-            r = Sk4f::Min(a, r);
+            auto a = skvx::shuffle<3,3,3,3>(r);
+            r = min(a, r);
         }
-        SkNx_cast<uint8_t>(r).store(dst+i);
+        skvx::cast<uint8_t>(r).store(dst+i);
     }
 }
 
 // apply mode to src==transparent (0)
 template<bool EnforcePMColor> void arith_transparent(const SkV4& k, SkPMColor dst[], int count) {
-    const Sk4f k3 = k[2],
-               k4 = k[3] * 255.0f + 0.5f;
+    const skvx::float4 k3 = k[2],
+                       k4 = k[3] * 255.0f + 0.5f;
 
     for (int i = 0; i < count; i++) {
-        Sk4f d = SkNx_cast<float>(Sk4b::Load(dst+i)),
-             r = pin(0, k3*d + k4, 255);
+        skvx::float4 d = skvx::cast<float>(skvx::byte4::Load(dst+i)),
+                     r = pin(k3*d + k4, skvx::float4(0.f), skvx::float4(255.f));
         if (EnforcePMColor) {
-            Sk4f a = SkNx_shuffle<3,3,3,3>(r);
-            r = Sk4f::Min(a, r);
+            auto a = skvx::shuffle<3,3,3,3>(r);
+            r = min(a, r);
         }
-        SkNx_cast<uint8_t>(r).store(dst+i);
+        skvx::cast<uint8_t>(r).store(dst+i);
     }
 }
 
@@ -308,6 +328,34 @@ SkIRect SkArithmeticImageFilter::onFilterBounds(const SkIRect& src,
 
 #if SK_SUPPORT_GPU
 
+std::unique_ptr<GrFragmentProcessor> make_arithmetic_fp(
+        std::unique_ptr<GrFragmentProcessor> srcFP,
+        std::unique_ptr<GrFragmentProcessor> dstFP,
+        const SkV4& k,
+        bool enforcePMColor) {
+    static const SkRuntimeEffect* effect = SkMakeRuntimeEffect(SkRuntimeEffect::MakeForShader,
+        "uniform shader srcFP;"
+        "uniform shader dstFP;"
+        "uniform half4 k;"
+        "uniform half pmClamp;"
+        "half4 main(float2 xy) {"
+            "half4 src = srcFP.eval(xy);"
+            "half4 dst = dstFP.eval(xy);"
+            "half4 color = saturate(k.x * src * dst +"
+                                   "k.y * src +"
+                                   "k.z * dst +"
+                                   "k.w);"
+            "color.rgb = min(color.rgb, max(color.a, pmClamp));"
+            "return color;"
+        "}"
+    );
+    return GrSkSLFP::Make(effect, "arithmetic_fp", /*inputFP=*/nullptr, GrSkSLFP::OptFlags::kNone,
+                          "srcFP", std::move(srcFP),
+                          "dstFP", std::move(dstFP),
+                          "k", k,
+                          "pmClamp", enforcePMColor ? 0.0f : 1.0f);
+}
+
 sk_sp<SkSpecialImage> SkArithmeticImageFilter::filterImageGPU(
         const Context& ctx,
         sk_sp<SkSpecialImage> background,
@@ -317,19 +365,19 @@ sk_sp<SkSpecialImage> SkArithmeticImageFilter::filterImageGPU(
         const SkIRect& bounds) const {
     SkASSERT(ctx.gpuBacked());
 
-    auto context = ctx.getContext();
+    auto rContext = ctx.getContext();
 
     GrSurfaceProxyView backgroundView, foregroundView;
 
     GrProtected isProtected = GrProtected::kNo;
     if (background) {
-        backgroundView = background->view(context);
+        backgroundView = background->view(rContext);
         SkASSERT(backgroundView.proxy());
         isProtected = backgroundView.proxy()->isProtected();
     }
 
     if (foreground) {
-        foregroundView = foreground->view(context);
+        foregroundView = foreground->view(rContext);
         SkASSERT(foregroundView.proxy());
         isProtected = foregroundView.proxy()->isProtected();
     }
@@ -356,7 +404,7 @@ sk_sp<SkSpecialImage> SkArithmeticImageFilter::filterImageGPU(
                                            ctx.colorSpace(),
                                            kPremul_SkAlphaType);
     } else {
-        fp = GrConstColorProcessor::Make(SK_PMColor4fTRANSPARENT);
+        fp = GrFragmentProcessor::MakeColor(SK_PMColor4fTRANSPARENT);
     }
 
     if (foreground) {
@@ -375,30 +423,29 @@ sk_sp<SkSpecialImage> SkArithmeticImageFilter::filterImageGPU(
                                              foreground->alphaType(),
                                              ctx.colorSpace(),
                                              kPremul_SkAlphaType);
-        fp = GrArithmeticProcessor::Make(std::move(fgFP), std::move(fp), fK, fEnforcePMColor);
+        fp = make_arithmetic_fp(std::move(fgFP), std::move(fp), fK, fEnforcePMColor);
     }
 
     GrImageInfo info(ctx.grColorType(), kPremul_SkAlphaType, ctx.refColorSpace(), bounds.size());
-    auto surfaceFillContext = GrSurfaceFillContext::Make(context,
-                                                         info,
-                                                         SkBackingFit::kApprox,
-                                                         1,
-                                                         GrMipmapped::kNo,
-                                                         isProtected,
-                                                         kBottomLeft_GrSurfaceOrigin);
-    if (!surfaceFillContext) {
+    auto sfc = rContext->priv().makeSFC(info,
+                                        "ArithmeticImageFilter_FilterImageGPU",
+                                        SkBackingFit::kApprox,
+                                        1,
+                                        GrMipmapped::kNo,
+                                        isProtected,
+                                        kBottomLeft_GrSurfaceOrigin);
+    if (!sfc) {
         return nullptr;
     }
 
-    surfaceFillContext->fillRectToRectWithFP(bounds, SkIRect::MakeSize(bounds.size()),
-                                             std::move(fp));
+    sfc->fillRectToRectWithFP(bounds, SkIRect::MakeSize(bounds.size()), std::move(fp));
 
-    return SkSpecialImage::MakeDeferredFromGpu(context,
+    return SkSpecialImage::MakeDeferredFromGpu(rContext,
                                                SkIRect::MakeWH(bounds.width(), bounds.height()),
                                                kNeedNewImageUniqueID_SpecialImage,
-                                               surfaceFillContext->readSurfaceView(),
-                                               surfaceFillContext->colorInfo().colorType(),
-                                               surfaceFillContext->colorInfo().refColorSpace());
+                                               sfc->readSurfaceView(),
+                                               sfc->colorInfo(),
+                                               ctx.surfaceProps());
 }
 #endif
 

@@ -14,6 +14,7 @@
 #include "include/core/SkFontTypes.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPathBuilder.h"
+#include "include/core/SkRRect.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
 #include "include/core/SkSize.h"
@@ -21,7 +22,6 @@
 #include "include/core/SkTypeface.h"
 #include "include/core/SkTypes.h"
 #include "include/effects/SkGradientShader.h"
-#include "src/core/SkClipOpPriv.h"
 #include "tools/Resources.h"
 #include "tools/ToolUtils.h"
 
@@ -90,8 +90,8 @@ protected:
             SkClipOp fOp;
             const char*      fName;
         } gOps[] = { //extra spaces in names for measureText
-            {kIntersect_SkClipOp,         "Isect "},
-            {kDifference_SkClipOp,        "Diff " },
+            {SkClipOp::kIntersect,         "Isect "},
+            {SkClipOp::kDifference,        "Diff " },
         };
 
         canvas->translate(20, 20);
@@ -118,7 +118,7 @@ protected:
 
         for (int invBits = 0; invBits < 4; ++invBits) {
             canvas->save();
-            for (size_t op = 0; op < SK_ARRAY_COUNT(gOps); ++op) {
+            for (size_t op = 0; op < std::size(gOps); ++op) {
                 this->drawHairlines(canvas, path, clipA, clipB);
 
                 bool doInvA = SkToBool(invBits & 1);
@@ -430,7 +430,7 @@ DEF_SIMPLE_GM(clip_shader_persp, canvas, 1370, 1030) {
 
     canvas->translate(10.f, 10.f);
 
-    for (size_t i = 0; i < SK_ARRAY_COUNT(matches); ++i) {
+    for (size_t i = 0; i < std::size(matches); ++i) {
         canvas->save();
         canvas->translate(-grid.fLeft, -grid.fTop);
         drawConfig(matches[i][0]);

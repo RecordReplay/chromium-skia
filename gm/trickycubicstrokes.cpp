@@ -17,11 +17,13 @@
 #include "include/core/SkString.h"
 #include "include/core/SkTypes.h"
 #include "include/gpu/GrContextOptions.h"
-#include "include/gpu/GrRecordingContext.h"
+#include "include/gpu/GrDirectContext.h"
+#include "include/utils/SkRandom.h"
 #include "src/core/SkGeometry.h"
-#include "src/gpu/GrDrawingManager.h"
-#include "src/gpu/GrRecordingContextPriv.h"
-#include "src/gpu/tessellate/GrTessellationPathRenderer.h"
+#include "src/gpu/ganesh/GrCaps.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrDrawingManager.h"
+#include "src/gpu/ganesh/GrRecordingContextPriv.h"
 
 static constexpr float kStrokeWidth = 30;
 static constexpr int kCellSize = 200;
@@ -99,16 +101,19 @@ enum class FillMode {
     kScale
 };
 
-static void draw_test(SkCanvas* canvas, const SkColor strokeColor) {
-    SkPaint strokePaint;
-    strokePaint.setAntiAlias(true);
-    strokePaint.setStrokeWidth(kStrokeWidth);
-    strokePaint.setColor(strokeColor);
-    strokePaint.setStyle(SkPaint::kStroke_Style);
+static void draw_test(SkCanvas* canvas, SkPaint::Cap cap, SkPaint::Join join) {
+    SkRandom rand;
 
     canvas->clear(SK_ColorBLACK);
 
-    for (size_t i = 0; i < SK_ARRAY_COUNT(kTrickyCubics); ++i) {
+    SkPaint strokePaint;
+    strokePaint.setAntiAlias(true);
+    strokePaint.setStrokeWidth(kStrokeWidth);
+    strokePaint.setStyle(SkPaint::kStroke_Style);
+    strokePaint.setStrokeCap(cap);
+    strokePaint.setStrokeJoin(join);
+
+    for (size_t i = 0; i < std::size(kTrickyCubics); ++i) {
         auto [originalPts, numPts, fillMode, scale] = kTrickyCubics[i];
 
         SkASSERT(numPts <= 4);
@@ -145,6 +150,7 @@ static void draw_test(SkCanvas* canvas, const SkColor strokeColor) {
         SkAutoCanvasRestore acr(canvas, true);
         canvas->concat(matrix);
         strokePaint.setStrokeWidth(kStrokeWidth / matrix.getMaxScale());
+        strokePaint.setColor(rand.nextU() | 0xff808080);
         SkPath path = SkPath().moveTo(p[0]);
         if (numPts == 4) {
             path.cubicTo(p[1], p[2], p[3]);
@@ -160,57 +166,9 @@ static void draw_test(SkCanvas* canvas, const SkColor strokeColor) {
 }
 
 DEF_SIMPLE_GM(trickycubicstrokes, canvas, kTestWidth, kTestHeight) {
-    draw_test(canvas, SK_ColorGREEN);
+    draw_test(canvas, SkPaint::kButt_Cap, SkPaint::kMiter_Join);
 }
 
-class TrickyCubicStrokes_tess_segs_5 : public skiagm::GpuGM {
-    SkString onShortName() override {
-        return SkString("trickycubicstrokes_tess_segs_5");
-    }
-
-    SkISize onISize() override {
-        return SkISize::Make(kTestWidth, kTestHeight);
-    }
-
-    // Pick a very small, odd (and better yet, prime) number of segments.
-    //
-    // - Odd because it makes the tessellation strip asymmetric, which will be important to test for
-    //   future plans that involve drawing in reverse order.
-    //
-    // - >=4 because the tessellator code will just assume we have enough to combine a miter join
-    //   and line in a single patch. (Requires 4 segments. Spec required minimum is 64.)
-    static constexpr int kMaxTessellationSegmentsOverride = 5;
-
-    void modifyGrContextOptions(GrContextOptions* options) override {
-        options->fMaxTessellationSegmentsOverride = kMaxTessellationSegmentsOverride;
-        // Only allow the tessellation path renderer.
-        options->fGpuPathRenderers = (GpuPathRenderers)((int)options->fGpuPathRenderers &
-                                                        (int)GpuPathRenderers::kTessellation);
-    }
-
-    DrawResult onDraw(GrRecordingContext* context, GrSurfaceDrawContext*, SkCanvas* canvas,
-                      SkString* errorMsg) override {
-        if (!context->priv().caps()->shaderCaps()->tessellationSupport() ||
-            !GrTessellationPathRenderer::IsSupported(*context->priv().caps())) {
-            errorMsg->set("Tessellation not supported.");
-            return DrawResult::kSkip;
-        }
-        auto opts = context->priv().drawingManager()->testingOnly_getOptionsForPathRendererChain();
-        if (!(opts.fGpuPathRenderers & GpuPathRenderers::kTessellation)) {
-            errorMsg->set("GrTessellationPathRenderer disabled.");
-            return DrawResult::kSkip;
-        }
-        if (context->priv().caps()->shaderCaps()->maxTessellationSegments() !=
-            kMaxTessellationSegmentsOverride) {
-            errorMsg->set("modifyGrContextOptions did not affect maxTessellationSegments. "
-                          "(Are you running viewer? If so use '--maxTessellationSegments 5'.)");
-            return DrawResult::kFail;
-        }
-        // Suppress a tessellator warning message that caps.maxTessellationSegments is too small.
-        GrRecordingContextPriv::AutoSuppressWarningMessages aswm(context);
-        draw_test(canvas, SK_ColorRED);
-        return DrawResult::kOk;
-    }
-};
-
-DEF_GM( return new TrickyCubicStrokes_tess_segs_5; )
+DEF_SIMPLE_GM(trickycubicstrokes_roundcaps, canvas, kTestWidth, kTestHeight) {
+    draw_test(canvas, SkPaint::kRound_Cap, SkPaint::kRound_Join);
+}

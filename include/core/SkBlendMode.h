@@ -30,7 +30,7 @@
  *  sa : source alpha
  *  da : destination alpha
  *
- *  Results are appreviated
+ *  Results are abbreviated
  *  r  : if all 4 components are computed in the same manner
  *  ra : result alpha component
  *  rc : result "color": red, green, blue components
@@ -72,6 +72,8 @@ enum class SkBlendMode {
     kLastSeparableMode = kMultiply,   //!< last blend mode operating separately on components
     kLastMode          = kLuminosity, //!< last valid value
 };
+
+static constexpr int kSkBlendModeCount = static_cast<int>(SkBlendMode::kLastMode) + 1;
 
 /**
  * For Porter-Duff SkBlendModes (those <= kLastCoeffMode), these coefficients describe the blend

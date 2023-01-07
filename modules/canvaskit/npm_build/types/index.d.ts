@@ -1,5 +1,7 @@
-// Minimum TypeScript Version: 3.7
-export function CanvasKitInit(opts: CanvasKitInitOptions): Promise<CanvasKit>;
+// Minimum TypeScript Version: 4.4
+/// <reference types="@webgpu/types" />
+
+export default function CanvasKitInit(opts: CanvasKitInitOptions): Promise<CanvasKit>;
 
 export interface CanvasKitInitOptions {
     /**
@@ -61,7 +63,7 @@ export interface CanvasKit {
      * In the CanvasKit canvas2d shim layer, we provide this map for processing
      * canvas2d calls, but not here for code size reasons.
      */
-    parseColorString(color: string, colorMap?: object): Color;
+    parseColorString(color: string, colorMap?: Record<string, Color>): Color;
 
     /**
      * Returns a copy of the passed in color with a new alpha value applied.
@@ -185,6 +187,7 @@ export interface CanvasKit {
      * will first try to create a GPU surface and then fallback to a CPU one if that fails. If just
      * the CPU mode has been compiled in, a CPU surface will be created.
      * @param canvas - either the canvas element itself or a string with the DOM id of it.
+     * @deprecated - Use MakeSWCanvasSurface, MakeWebGLCanvasSurface, or MakeGPUCanvasSurface.
      */
     MakeCanvasSurface(canvas: HTMLCanvasElement | string): Surface | null;
 
@@ -237,8 +240,15 @@ export interface CanvasKit {
     /**
      * Creates a GrDirectContext from the given WebGL Context.
      * @param ctx
+     * @deprecated Use MakeWebGLContext instead.
      */
-    MakeGrContext(ctx: WebGLContextHandle): GrDirectContext;
+    MakeGrContext(ctx: WebGLContextHandle): GrDirectContext | null;
+
+    /**
+     * Creates a GrDirectContext from the given WebGL Context.
+     * @param ctx
+     */
+    MakeWebGLContext(ctx: WebGLContextHandle): GrDirectContext | null;
 
     /**
      * Creates a Surface that will be drawn to the given GrDirectContext (and show up on screen).
@@ -249,6 +259,47 @@ export interface CanvasKit {
      */
     MakeOnScreenGLSurface(ctx: GrDirectContext, width: number, height: number,
                           colorSpace: ColorSpace): Surface | null;
+
+    /**
+     * Creates a context that operates over the given WebGPU Device.
+     * @param device
+     */
+    MakeGPUDeviceContext(device: GPUDevice): WebGPUDeviceContext | null;
+
+    /**
+     * Creates a Surface that draws to the given GPU texture.
+     * @param ctx
+     * @param texture - A texture that was created on the GPU device associated with `ctx`.
+     * @param width - Width of the visible region in pixels.
+     * @param height - Height of the visible region in pixels.
+     * @param colorSpace
+     */
+    MakeGPUTextureSurface(ctx: WebGPUDeviceContext, texture: GPUTexture, width: number, height: number,
+                          colorSpace: ColorSpace): Surface | null;
+
+    /**
+     * Creates and configures a WebGPU context for the given canvas.
+     * @param ctx
+     * @param canvas
+     * @param opts
+     */
+    MakeGPUCanvasContext(ctx: WebGPUDeviceContext, canvas: HTMLCanvasElement,
+                         opts?: WebGPUCanvasOptions): WebGPUCanvasContext | null;
+
+    /**
+     * Creates a Surface backed by the next available texture in the swapchain associated with the
+     * given WebGPU canvas context. The context must have been already successfully configured using
+     * the same GPUDevice associated with `ctx`.
+     * @param canvasContext - WebGPU context associated with the canvas. The canvas can either be an
+     *                        on-screen HTMLCanvasElement or an OffscreenCanvas.
+     * @param colorSpace
+     * @param width - width of the visible region. If not present, the canvas width from `canvasContext`
+     *                is used.
+     * @param height - height of the visible region. If not present, the canvas width from `canvasContext`
+     *                is used.
+     */
+    MakeGPUCanvasSurface(canvasContext: WebGPUCanvasContext, colorSpace: ColorSpace,
+                         width?: number, height?: number): Surface | null;
 
     /**
      * Returns a (non-visible) Surface on the GPU. It has the given dimensions and uses 8888
@@ -268,21 +319,20 @@ export interface CanvasKit {
     MakeRenderTarget(ctx: GrDirectContext, info: ImageInfo): Surface | null;
 
     /**
-     * Returns the current WebGLContext that the wasm code is configured to draw to. It is
-     * recommended to capture this value after creating a new WebGL surface if there are multiple
-     * surfaces on the screen.
-     */
-    currentContext(): WebGLContextHandle;
-
-    /**
-     * Sets the WebGLContext that the wasm code will draw to.
+     * Returns a texture-backed image based on the content in src. It assumes the image is
+     * RGBA_8888, unpremul and SRGB. This image can be re-used across multiple surfaces.
      *
-     * When a WebGL call is made on the C++ side, it is routed to the JS side to target a specific
-     * WebGL context. WebGL calls are methods on a WebGL context, so CanvasKit needs to know which
-     * context to send the calls to.
-     * @param ctx
+     * Not available for software-backed surfaces.
+     * @param src - CanvasKit will take ownership of the TextureSource and clean it up when
+     *              the image is destroyed.
+     * @param info - If provided, will be used to determine the width/height/format of the
+     *               source image. If not, sensible defaults will be used.
+     * @param srcIsPremul - set to true if the src data has premultiplied alpha. Otherwise, it will
+     *         be assumed to be Unpremultiplied. Note: if this is true and info specifies
+     *         Unpremul, Skia will not convert the src pixels first.
      */
-    setCurrentContext(ctx: WebGLContextHandle): void;
+    MakeLazyImageFromTextureSource(src: TextureSource, info?: ImageInfo | PartialImageInfo,
+                                   srcIsPremul?: boolean): Image;
 
     /**
      * Deletes the associated WebGLContext. Function not available on the CPU version.
@@ -308,6 +358,9 @@ export interface CanvasKit {
     /**
      * Decodes the given bytes into an animated image. Returns null if the bytes were invalid.
      * The passed in bytes will be copied into the WASM heap, so the caller can dispose of them.
+     *
+     * The returned AnimatedImage will be "pointing to" the first frame, i.e. currentFrameDuration
+     * and makeImageAtCurrentFrame will be referring to the first frame.
      * @param bytes
      */
     MakeAnimatedImageFromEncoded(bytes: Uint8Array | ArrayBuffer): AnimatedImage | null;
@@ -409,7 +462,7 @@ export interface CanvasKit {
     readonly PictureRecorder: DefaultConstructor<PictureRecorder>;
     readonly TextStyle: TextStyleConstructor;
 
-    // Factories, i.e. things made with CanvasKit.Foo.MakeTurboEncapsulator()
+    // Factories, i.e. things made with CanvasKit.Foo.MakeTurboEncabulator()
     readonly ParagraphBuilder: ParagraphBuilderFactory;
     readonly ColorFilter: ColorFilterFactory;
     readonly FontMgr: FontMgrFactory;
@@ -419,6 +472,7 @@ export interface CanvasKit {
     readonly RuntimeEffect: RuntimeEffectFactory;
     readonly Shader: ShaderFactory;
     readonly TextBlob: TextBlobFactory;
+    readonly Typeface: TypefaceFactory;
     readonly TypefaceFontProvider: TypefaceFontProviderFactory;
 
     // Misc
@@ -432,15 +486,17 @@ export interface CanvasKit {
     readonly BlendMode: BlendModeEnumValues;
     readonly BlurStyle: BlurStyleEnumValues;
     readonly ClipOp: ClipOpEnumValues;
+    readonly ColorChannel: ColorChannelEnumValues;
     readonly ColorType: ColorTypeEnumValues;
     readonly FillType: FillTypeEnumValues;
     readonly FilterMode: FilterModeEnumValues;
-    readonly FilterQuality: FilterQualityEnumValues;
     readonly FontEdging: FontEdgingEnumValues;
     readonly FontHinting: FontHintingEnumValues;
+    readonly GlyphRunFlags: GlyphRunFlagValues;
     readonly ImageFormat: ImageFormatEnumValues;
     readonly MipmapMode: MipmapModeEnumValues;
     readonly PaintStyle: PaintStyleEnumValues;
+    readonly Path1DEffect: Path1DEffectStyleEnumValues;
     readonly PathOp: PathOpEnumValues;
     readonly PointMode: PointModeEnumValues;
     readonly ColorSpace: ColorSpaceEnumValues;
@@ -503,6 +559,7 @@ export interface CanvasKit {
     readonly TextAlign: TextAlignEnumValues;
     readonly TextBaseline: TextBaselineEnumValues;
     readonly TextDirection: TextDirectionEnumValues;
+    readonly TextHeightBehavior: TextHeightBehaviorEnumValues;
 
     // Paragraph Constants
     readonly NoDecoration: number;
@@ -536,7 +593,7 @@ export interface Camera {
 export interface EmbindObject<T extends EmbindObject<T>> {
     clone(): T;
     delete(): void;
-    deleteAfter(): void;
+    deleteLater(): void;
     isAliasOf(other: any): boolean;
     isDeleted(): boolean;
 }
@@ -577,7 +634,7 @@ export interface EmulatedCanvas2D {
      * @param bytes
      * @param descriptors
      */
-    loadFont(bytes: ArrayBuffer | Uint8Array, descriptors: object): void;
+    loadFont(bytes: ArrayBuffer | Uint8Array, descriptors: Record<string, string>): void;
 
     /**
      * Returns an new emulated Path2D object.
@@ -615,6 +672,30 @@ export interface GrDirectContext extends EmbindObject<GrDirectContext> {
 }
 
 /**
+ * Represents the context backed by a WebGPU device instance.
+ */
+export type WebGPUDeviceContext = GrDirectContext;
+
+/**
+ * Represents the canvas context and swapchain backed by a WebGPU device.
+ */
+export interface WebGPUCanvasContext {
+    /**
+     * A convenient way to draw multiple frames over the swapchain texture sequence associated with
+     * a canvas element. Each call internally constructs a new Surface that targets the current
+     * GPUTexture in swapchain.
+     *
+     * This requires an environment where a global function called requestAnimationFrame is
+     * available (e.g. on the web, not on Node). The internally created surface is flushed and
+     * destroyed automatically by this wrapper once the `drawFrame` callback returns.
+     *
+     * Users can call canvasContext.requestAnimationFrame in the callback function to
+     * draw multiple frames, e.g. of an animation.
+     */
+    requestAnimationFrame(drawFrame: (_: Canvas) => void): void;
+}
+
+/**
  * See Metrics.h for more on this struct.
  */
 export interface LineMetrics {
@@ -648,6 +729,56 @@ export interface LineMetrics {
     lineNumber: number;
 }
 
+export interface Range {
+    first: number;
+    last: number;
+}
+
+/**
+ * Information for a run of shaped text. See Paragraph.getShapedLines()
+ *
+ * Notes:
+ * positions is documented as Float32, but it holds twice as many as you expect, and they
+ * are treated logically as pairs of floats: {x0, y0}, {x1, y1}, ... for each glyph.
+ *
+ * positions and offsets arrays have 1 extra slot (actually 2 for positions)
+ * to describe the location "after" the last glyph in the glyphs array.
+ */
+export interface GlyphRun {
+    typeface: Typeface;     // currently set to null (temporary)
+    size: number;
+    fakeBold: boolean;
+    fakeItalic: boolean;
+
+    glyphs: Uint16Array;
+    positions: Float32Array;    // alternating x0, y0, x1, y1, ...
+    offsets: Uint32Array;
+    flags: number;              // see GlyphRunFlags
+}
+
+/**
+ * Information for a paragraph of text. See Paragraph.getShapedLines()
+ */
+ export interface ShapedLine {
+    textRange: Range;   // first and last character offsets for the line (derived from runs[])
+    top: number;        // top y-coordinate for the line
+    bottom: number;     // bottom y-coordinate for the line
+    baseline: number;   // baseline y-coordinate for the line
+    runs: GlyphRun[];   // array of GlyphRun objects for the line
+}
+
+/**
+ * Input to ShapeText(..., FontBlock[], ...);
+ */
+export interface FontBlock {
+    length: number;     // number of text codepoints this block is applied to
+
+    typeface: Typeface;
+    size: number;
+    fakeBold: boolean;
+    fakeItalic: boolean;
+}
+
 /**
  * This object is a wrapper around a pointer to some memory on the WASM heap. The type of the
  * pointer was determined at creation time.
@@ -674,6 +805,15 @@ export interface MallocObj {
      * it will not be copied again, only the pointer will be re-used.
      */
     toTypedArray(): TypedArray;
+}
+
+/**
+ * This represents a subset of an animation's duration.
+ */
+export interface AnimationMarker {
+    name: string;
+    t0: number; // 0.0 to 1.0
+    t1: number; // 0.0 to 1.0
 }
 
 /**
@@ -760,7 +900,7 @@ export interface ManagedSkottieAnimation extends SkottieAnimation {
     setColor(key: string, color: InputColor): boolean;
     setOpacity(key: string, opacity: number): boolean;
     setText(key: string, text: string, size: number): boolean;
-    getMarkers(): object[];
+    getMarkers(): AnimationMarker[];
     getColorProps(): ColorProperty[];
     getOpacityProps(): OpacityProperty[];
     getTextProps(): TextProperty[];
@@ -787,7 +927,7 @@ export interface Paragraph extends EmbindObject<Paragraph> {
     getMaxIntrinsicWidth(): number;
     getMaxWidth(): number;
     getMinIntrinsicWidth(): number;
-    getRectsForPlaceholders(): FlattenedRectangleArray;
+    getRectsForPlaceholders(): Rect[];
 
     /**
      * Returns bounding boxes that enclose all text in the range of glpyh indexes [start, end).
@@ -797,13 +937,18 @@ export interface Paragraph extends EmbindObject<Paragraph> {
      * @param wStyle
      */
     getRectsForRange(start: number, end: number, hStyle: RectHeightStyle,
-                     wStyle: RectWidthStyle): FlattenedRectangleArray;
+                     wStyle: RectWidthStyle): Rect[];
 
     /**
      * Finds the first and last glyphs that define a word containing the glyph at index offset.
      * @param offset
      */
     getWordBoundary(offset: number): URange;
+
+    /**
+     * Returns an array of ShapedLine objects, describing the paragraph.
+     */
+    getShapedLines(): ShapedLine[];
 
     /**
      * Lays out the text in the paragraph so it is wrapped to the given width.
@@ -838,6 +983,55 @@ export interface ParagraphBuilder extends EmbindObject<ParagraphBuilder> {
     build(): Paragraph;
 
     /**
+     * Returns a Paragraph object that can be used to be layout and
+     * paint the text to an Canvas.
+     * @param bidiRegions is an array of unsigned integers that should be
+     * treated as triples (starting index, ending index, direction).
+     * Direction == 1 means left-to-right, direction == 0 is right-to-left. It's
+     * recommended to use `CanvasKit.TextDirection.RTL.value` or
+     * `CanvasKit.TextDirection.LTR.value` instead of hardcoding 0 or 1.
+     *
+     * The indices are expected to be relative to the UTF-16 representation of
+     * the text.
+     * @param words is an array of word edges (starting or ending). You can
+     * pass 2 elements (0 as a start of the entire text and text.size as the
+     * end). This information only needed for a specific API method getWords.
+     *
+     * The indices are expected to be relative to the UTF-16 representation of
+     * the text.
+     *
+     * The `Intl.Segmenter` API can be used as a source for this data.
+     *
+     * @param graphemes is an array of indexes in the input text that point
+     * to the start of each grapheme.
+     *
+     * The indices are expected to be relative to the UTF-16 representation of
+     * the text.
+     *
+     * The `Intl.Segmenter` API can be used as a source for this data.
+     *
+     * @param lineBreaks is an array of unsigned integers that should be
+     * treated as pairs (index, break type) that point to the places of possible
+     * line breaking if needed. It should include 0 as the first element.
+     * Break type == 0 means soft break, break type == 1 is a hard break.
+     *
+     * The indices are expected to be relative to the UTF-16 representation of
+     * the text.
+     *
+     * Chrome's `v8BreakIterator` API can be used as a source for this data.
+     */
+    buildWithClientInfo(bidiRegions?: InputBidiRegions | null,
+                        words?: InputWords | null,
+                        graphemes?: InputGraphemes | null,
+                        lineBreaks?: InputLineBreaks | null): Paragraph;
+
+    /**
+     * Returns the entire Paragraph text (which is useful in case that text
+     * was produced as a set of addText calls).
+     */
+    getText(): string;
+
+    /**
      * Remove a style from the stack. Useful to apply different styles to chunks
      * of text such as bolding.
      */
@@ -857,6 +1051,12 @@ export interface ParagraphBuilder extends EmbindObject<ParagraphBuilder> {
      * @param bg
      */
     pushPaintStyle(textStyle: TextStyle, fg: Paint, bg: Paint): void;
+
+    /**
+     * Resets this builder to its initial state, discarding any text, styles, placeholders that have
+     * been added, but keeping the initial ParagraphStyle.
+     */
+    reset(): void;
 }
 
 export interface ParagraphStyle {
@@ -864,9 +1064,11 @@ export interface ParagraphStyle {
     ellipsis?: string;
     heightMultiplier?: number;
     maxLines?: number;
+    replaceTabCharacters?: boolean;
     strutStyle?: StrutStyle;
     textAlign?: TextAlign;
     textDirection?: TextDirection;
+    textHeightBehavior?: TextHeightBehavior;
     textStyle?: TextStyle;
 }
 
@@ -946,6 +1148,7 @@ export interface SkSLUniform {
     rows: number;
     /** The index into the uniforms array that this uniform begins. */
     slot: number;
+    isInteger: boolean;
 }
 
 /**
@@ -953,7 +1156,12 @@ export interface SkSLUniform {
  */
 export interface AnimatedImage extends EmbindObject<AnimatedImage> {
     /**
-     * Decodes the next frame. Returns -1 when the animation is on the last frame.
+     * Returns the length of the current frame in ms.
+     */
+    currentFrameDuration(): number;
+    /**
+     * Decodes the next frame. Returns the length of that new frame in ms.
+     * Returns -1 when the animation is on the last frame.
      */
     decodeNextFrame(): number;
 
@@ -1058,7 +1266,7 @@ export interface Canvas extends EmbindObject<Canvas> {
      */
     drawAtlas(atlas: Image, srcRects: InputFlattenedRectangleArray,
               dstXforms: InputFlattenedRSXFormArray, paint: Paint,
-              blendMode?: BlendMode, colors?: ColorIntArray,
+              blendMode?: BlendMode | null, colors?: ColorIntArray | null,
               sampling?: CubicResampler | FilterOptions): void;
 
     /**
@@ -1104,6 +1312,20 @@ export interface Canvas extends EmbindObject<Canvas> {
     drawDRRect(outer: InputRRect, inner: InputRRect, paint: Paint): void;
 
     /**
+     * Draws a run of glyphs, at corresponding positions, in a given font.
+     * @param glyphs the array of glyph IDs (Uint16TypedArray)
+     * @param positions the array of x,y floats to position each glyph
+     * @param x x-coordinate of the origin of the entire run
+     * @param y y-coordinate of the origin of the entire run
+     * @param font the font that contains the glyphs
+     * @param paint
+     */
+    drawGlyphs(glyphs: InputGlyphIDArray,
+               positions: InputFlattenedPointArray,
+               x: number, y: number,
+               font: Font, paint: Paint): void;
+
+    /**
      * Draws the given image with its top-left corner at (left, top) using the current clip,
      * the current matrix, and optionally-provided paint.
      * @param img
@@ -1111,7 +1333,7 @@ export interface Canvas extends EmbindObject<Canvas> {
      * @param top
      * @param paint
      */
-    drawImage(img: Image, left: number, top: number, paint?: Paint): void;
+    drawImage(img: Image, left: number, top: number, paint?: Paint | null): void;
 
     /**
      * Draws the given image with its top-left corner at (left, top) using the current clip,
@@ -1124,7 +1346,7 @@ export interface Canvas extends EmbindObject<Canvas> {
      * @param paint
      */
     drawImageCubic(img: Image, left: number, top: number, B: number, C: number,
-                   paint: Paint | null): void;
+                   paint?: Paint | null): void;
 
     /**
      * Draws the given image with its top-left corner at (left, top) using the current clip,
@@ -1138,18 +1360,7 @@ export interface Canvas extends EmbindObject<Canvas> {
      * @param paint
      */
     drawImageOptions(img: Image, left: number, top: number, fm: FilterMode,
-                     mm: MipmapMode, paint: Paint | null): void;
-
-    /**
-     * Draws the current frame of the given animated image with its top-left corner at
-     * (left, top) using the current clip, the current matrix, and optionally-provided paint.
-     * @param aImg
-     * @param left
-     * @param top
-     * @param paint
-     */
-    drawImageAtCurrentFrame(aImg: AnimatedImage, left: number, top: number,
-                            paint?: Paint): void;
+                     mm: MipmapMode, paint?: Paint | null): void;
 
     /**
      *  Draws the provided image stretched proportionally to fit into dst rectangle.
@@ -1162,7 +1373,7 @@ export interface Canvas extends EmbindObject<Canvas> {
      * @param paint
      */
     drawImageNine(img: Image, center: InputIRect, dest: InputRect, filter: FilterMode,
-                  paint?: Paint): void;
+                  paint?: Paint | null): void;
 
     /**
      * Draws sub-rectangle src from provided image, scaled and translated to fill dst rectangle.
@@ -1186,7 +1397,7 @@ export interface Canvas extends EmbindObject<Canvas> {
      * @param paint
      */
     drawImageRectCubic(img: Image, src: InputRect, dest: InputRect,
-                       B: number, C: number, paint?: Paint): void;
+                       B: number, C: number, paint?: Paint | null): void;
 
     /**
      * Draws sub-rectangle src from provided image, scaled and translated to fill dst rectangle.
@@ -1200,7 +1411,7 @@ export interface Canvas extends EmbindObject<Canvas> {
      * @param paint
      */
     drawImageRectOptions(img: Image, src: InputRect, dest: InputRect, fm: FilterMode,
-                         mm: MipmapMode, paint?: Paint): void;
+                         mm: MipmapMode, paint?: Paint | null): void;
 
     /**
      * Draws line segment from (x0, y0) to (x1, y1) using the current clip, current matrix,
@@ -1242,6 +1453,21 @@ export interface Canvas extends EmbindObject<Canvas> {
      * @param paint
      */
     drawPath(path: Path, paint: Paint): void;
+
+    /**
+     * Draws a cubic patch defined by 12 control points [top, right, bottom, left] with optional
+     * colors and shader-coordinates [4] specifed for each corner [top-left, top-right, bottom-right, bottom-left]
+     * @param cubics 12 points : 4 connected cubics specifying the boundary of the patch
+     * @param colors optional colors interpolated across the patch
+     * @param texs optional shader coordinates interpolated across the patch
+     * @param mode Specifies how shader and colors blend (if both are specified)
+     * @param paint
+     */
+    drawPatch(cubics: InputFlattenedPointArray,
+              colors?: ColorIntArray | Color[] | null,
+              texs?: InputFlattenedPointArray | null,
+              mode?: BlendMode | null,
+              paint?: Paint): void;
 
     /**
      * Draws the given picture using the current clip, current matrix, and the provided paint.
@@ -1336,11 +1562,13 @@ export interface Canvas extends EmbindObject<Canvas> {
     drawVertices(verts: Vertices, mode: BlendMode, paint: Paint): void;
 
     /**
-     * Returns the 4x4 matrix matching the given marker or null if there was none.
-     * See also markCTM.
-     * @param marker
+     * Returns the bounds of clip, unaffected by the canvas's matrix.
+     * If the clip is empty, all four integers in the returned rectangle will equal zero.
+     *
+     * @param output - if provided, the results will be copied into the given array instead of
+     *      allocating a new one.
      */
-    findMarkedCTM(marker: string): Matrix4x4 | null;
+    getDeviceClipBounds(output?: IRect): IRect;
 
     /**
      * Returns the current transform from local coordinates to the 'device', which for most
@@ -1369,15 +1597,6 @@ export interface Canvas extends EmbindObject<Canvas> {
     makeSurface(info: ImageInfo): Surface | null;
 
     /**
-     * Record a marker (provided by caller) for the current CTM. This does not change anything
-     * about the ctm or clip, but does "name" this matrix value, so it can be referenced by
-     * custom effects (who access it by specifying the same name).
-     * See also findMarkedCTM.
-     * @param marker
-     */
-    markCTM(marker: string): void;
-
-    /**
      * Returns a TypedArray containing the pixels reading starting at (srcX, srcY) and does not
      * exceed the size indicated by imageInfo. See SkCanvas.h for more on the caveats.
      *
@@ -1398,7 +1617,7 @@ export interface Canvas extends EmbindObject<Canvas> {
      *          not supported in JS, so that colorType corresponds to raw bytes Uint8Array.
      */
     readPixels(srcX: number, srcY: number, imageInfo: ImageInfo, dest?: MallocObj,
-               bytesPerRow?: number): Uint8Array | Float32Array | null;
+               bytesPerRow?: number): Float32Array | Uint8Array | null;
 
     /**
      * Removes changes to the current matrix and clip since Canvas state was
@@ -1523,10 +1742,22 @@ export interface ContourMeasure extends EmbindObject<ContourMeasure> {
     length(): number;
 }
 
+export interface FontMetrics {
+    ascent: number;     // suggested space above the baseline. < 0
+    descent: number;    // suggested space below the baseline. > 0
+    leading: number;    // suggested spacing between descent of previous line and ascent of next line.
+    bounds?: Rect;      // smallest rect containing all glyphs (relative to 0,0)
+}
+
 /**
  * See SkFont.h for more on this class.
  */
 export interface Font extends EmbindObject<Font> {
+    /**
+     * Returns the FontMetrics for this font.
+     */
+    getMetrics(): FontMetrics;
+
     /**
      * Retrieves the bounds for each glyph in glyphs.
      * If paint is not null, its stroking, PathEffect, and MaskFilter fields are respected.
@@ -1540,14 +1771,15 @@ export interface Font extends EmbindObject<Font> {
                    output?: Float32Array): Float32Array;
 
     /**
-     * Retrieves the glyph ids for each code point in the provided string. Note that glyph IDs
-     * are font-dependent; different fonts may have different ids for the same code point.
+     * Retrieves the glyph ids for each code point in the provided string. This call is passed to
+     * the typeface of this font. Note that glyph IDs are typeface-dependent; different faces
+     * may have different ids for the same code point.
      * @param str
      * @param numCodePoints - the number of code points in the string. Defaults to str.length.
      * @param output - if provided, the results will be copied into this array.
      */
     getGlyphIDs(str: string, numCodePoints?: number,
-                output?: TypedArray): GlyphIDArray;
+                output?: GlyphIDArray): GlyphIDArray;
 
     /**
      * Retrieves the advanceX measurements for each glyph.
@@ -1559,6 +1791,24 @@ export interface Font extends EmbindObject<Font> {
      */
     getGlyphWidths(glyphs: InputGlyphIDArray, paint?: Paint | null,
                    output?: Float32Array): Float32Array;
+
+    /**
+     * Computes any intersections of a thick "line" and a run of positionsed glyphs.
+     * The thick line is represented as a top and bottom coordinate (positive for
+     * below the baseline, negative for above). If there are no intersections
+     * (e.g. if this is intended as an underline, and there are no "collisions")
+     * then the returned array will be empty. If there are intersections, the array
+     * will contain pairs of X coordinates [start, end] for each segment that
+     * intersected with a glyph.
+     *
+     * @param glyphs        the glyphs to intersect with
+     * @param positions     x,y coordinates (2 per glyph) for each glyph
+     * @param top           top of the thick "line" to use for intersection testing
+     * @param bottom        bottom of the thick "line" to use for intersection testing
+     * @return              array of [start, end] x-coordinate pairs. Maybe be empty.
+     */
+    getGlyphIntercepts(glyphs: InputGlyphIDArray, positions: Float32Array | number[],
+                       top: number, bottom: number): Float32Array;
 
     /**
      * Returns text scale on x-axis. Default value is 1.
@@ -1574,6 +1824,11 @@ export interface Font extends EmbindObject<Font> {
      * Returns text skew on x-axis. Default value is zero.
      */
     getSkewX(): number;
+
+    /**
+     * Returns embolden effect for this font. Default value is false.
+     */
+    isEmbolden(): boolean;
 
     /**
      * Returns the Typeface set for this font.
@@ -1626,6 +1881,12 @@ export interface Font extends EmbindObject<Font> {
     setSkewX(sx: number): void;
 
     /**
+     * Set embolden effect for this font.
+     * @param embolden
+     */
+    setEmbolden(embolden: boolean): void;
+
+    /**
      * Requests, but does not require, that glyphs respect sub-pixel positioning.
      * @param subpixel
      */
@@ -1653,12 +1914,6 @@ export interface FontMgr extends EmbindObject<FontMgr> {
      * @param index
      */
     getFamilyName(index: number): string;
-
-    /**
-     * Create a typeface for the specified bytes and return it.
-     * @param fontData
-     */
-    makeTypefaceFromData(fontData: ArrayBuffer): Typeface;
 }
 
 /**
@@ -1739,7 +1994,7 @@ export interface Image extends EmbindObject<Image> {
      *          not supported in JS, so that colorType corresponds to raw bytes Uint8Array.
      */
     readPixels(srcX: number, srcY: number, imageInfo: ImageInfo, dest?: MallocObj,
-               bytesPerRow?: number): Uint8Array | Float32Array | null;
+               bytesPerRow?: number): Float32Array | Uint8Array | null;
 
     /**
      * Return the width in pixels of the image.
@@ -1774,12 +2029,12 @@ export interface CubicResampler {
     B: number;  // 0..1
     C: number;  // 0..1
 }
-/**
 
+/**
  * Specifies sampling using filter and mipmap options
  */
 export interface FilterOptions {
-    filter:  FilterMode;
+    filter: FilterMode;
     mipmap?: MipmapMode;    // defaults to None if not specified
 }
 
@@ -1796,12 +2051,6 @@ export interface Paint extends EmbindObject<Paint> {
      * Returns a copy of this paint.
      */
     copy(): Paint;
-
-    /**
-     * Returns the blend mode, that is, the mode used to combine source color
-     * with destination color.
-     */
-    getBlendMode(): BlendMode;
 
     /**
      * Retrieves the alpha and RGB unpremultiplied. RGB are extended sRGB values
@@ -1874,7 +2123,7 @@ export interface Paint extends EmbindObject<Paint> {
      * Sets the current color filter, replacing the existing one if there was one.
      * @param filter
      */
-    setColorFilter(filter: ColorFilter): void;
+    setColorFilter(filter: ColorFilter | null): void;
 
     /**
      * Sets the color used when stroking and filling. The color values are interpreted as being in
@@ -1888,25 +2137,25 @@ export interface Paint extends EmbindObject<Paint> {
      * Sets the current image filter, replacing the existing one if there was one.
      * @param filter
      */
-    setImageFilter(filter: ImageFilter): void;
+    setImageFilter(filter: ImageFilter | null): void;
 
     /**
      * Sets the current mask filter, replacing the existing one if there was one.
      * @param filter
      */
-    setMaskFilter(filter: MaskFilter): void;
+    setMaskFilter(filter: MaskFilter | null): void;
 
     /**
      * Sets the current path effect, replacing the existing one if there was one.
      * @param effect
      */
-    setPathEffect(effect: PathEffect): void;
+    setPathEffect(effect: PathEffect | null): void;
 
     /**
      * Sets the current shader, replacing the existing one if there was one.
      * @param shader
      */
-    setShader(shader: Shader): void;
+    setShader(shader: Shader | null): void;
 
     /**
      * Sets the geometry drawn at the beginning and end of strokes.
@@ -1954,6 +2203,18 @@ export interface Path extends EmbindObject<Path> {
      * @param sweepAngle
      */
     addArc(oval: InputRect, startAngle: AngleInDegrees, sweepAngle: AngleInDegrees): Path;
+
+    /**
+     * Adds circle centered at (x, y) of size radius to the path.
+     * Has no effect if radius is zero or negative.
+     *
+     * @param x       center of circle
+     * @param y       center of circle
+     * @param radius  distance from center to edge
+     * @param isCCW - if the path should be drawn counter-clockwise or not
+     * @return        reference to SkPath
+     */
+    addCircle(x: number, y: number, r: number, isCCW?: boolean): Path;
 
     /**
      * Adds oval to Path, appending kMove_Verb, four kConic_Verb, and kClose_Verb.
@@ -2206,7 +2467,15 @@ export interface Path extends EmbindObject<Path> {
     lineTo(x: number, y: number): Path;
 
     /**
-     * Adds begininning of contour at the given point.
+     * Returns a new path that covers the same area as the original path, but with the
+     * Winding FillType. This may re-draw some contours in the path as counter-clockwise
+     * instead of clockwise to achieve that effect. If such a transformation cannot
+     * be done, null is returned.
+     */
+    makeAsWinding(): Path | null;
+
+    /**
+     * Adds beginning of contour at the given point.
      * Returns the modified path for easier chaining.
      * @param x
      * @param y
@@ -2348,8 +2617,10 @@ export interface Path extends EmbindObject<Path> {
 
     /**
      * Serializes the contents of this path as a series of commands.
+     * The first item will be a verb, followed by any number of arguments needed. Then it will
+     * be followed by another verb, more arguments and so on.
      */
-    toCmds(): PathCommand[];
+    toCmds(): Float32Array;
 
     /**
      * Returns this path as an SVG string.
@@ -2388,6 +2659,22 @@ export type PathEffect = EmbindObject<PathEffect>;
  */
 export interface SkPicture extends EmbindObject<SkPicture> {
     /**
+     *  Returns a new shader that will draw with this picture.
+     *
+     *  @param tmx  The tiling mode to use when sampling in the x-direction.
+     *  @param tmy  The tiling mode to use when sampling in the y-direction.
+     *  @param mode How to filter the tiles
+     *  @param localMatrix Optional matrix used when sampling
+     *  @param tileRect The tile rectangle in picture coordinates: this represents the subset
+     *              (or superset) of the picture used when building a tile. It is not
+     *              affected by localMatrix and does not imply scaling (only translation
+     *              and cropping). If null, the tile rect is considered equal to the picture
+     *              bounds.
+     */
+    makeShader(tmx: TileMode, tmy: TileMode, mode: FilterMode,
+               localMatrix?: InputMatrix, tileRect?: InputRect): Shader;
+
+    /**
      * Returns the serialized format of this SkPicture. The format may change at anytime and
      * no promises are made for backwards or forward compatibility.
      */
@@ -2415,20 +2702,18 @@ export interface RuntimeEffect extends EmbindObject<RuntimeEffect> {
     /**
      * Returns a shader executed using the given uniform data.
      * @param uniforms
-     * @param isOpaque
      * @param localMatrix
      */
-    makeShader(uniforms: Float32Array | number[], isOpaque?: boolean,
+    makeShader(uniforms: Float32Array | number[] | MallocObj,
                localMatrix?: InputMatrix): Shader;
 
     /**
      * Returns a shader executed using the given uniform data and the children as inputs.
      * @param uniforms
-     * @param isOpaque
      * @param children
      * @param localMatrix
      */
-    makeShaderWithChildren(uniforms: Float32Array | number[], isOpaque?: boolean,
+    makeShaderWithChildren(uniforms: Float32Array | number[] | MallocObj,
                            children?: Shader[], localMatrix?: InputMatrix): Shader;
 
     /**
@@ -2463,6 +2748,16 @@ export type Shader = EmbindObject<Shader>;
 
 export interface Surface extends EmbindObject<Surface> {
     /**
+     * A convenient way to draw exactly once on the canvas associated with this surface.
+     * This requires an environment where a global function called requestAnimationFrame is
+     * available (e.g. on the web, not on Node). Users do not need to flush the surface,
+     * or delete/dispose of it as that is taken care of automatically with this wrapper.
+     *
+     * Node users should call getCanvas() and work with that canvas directly.
+     */
+    drawOnce(drawFrame: (_: Canvas) => void): void;
+
+    /**
      * Clean up the surface and any extra memory.
      * [Deprecated]: In the future, calls to delete() will be sufficient to clean up the memory.
      */
@@ -2491,6 +2786,35 @@ export interface Surface extends EmbindObject<Surface> {
     imageInfo(): ImageInfo;
 
     /**
+     * Creates an Image from the provided texture and info. The Image will own the texture;
+     * when the image is deleted, the texture will be cleaned up.
+     * @param tex
+     * @param info - describes the content of the texture.
+     */
+    makeImageFromTexture(tex: WebGLTexture, info: ImageInfo): Image | null;
+
+    /**
+     * Returns a texture-backed image based on the content in src. It uses RGBA_8888, unpremul
+     * and SRGB - for more control, use makeImageFromTexture.
+     *
+     * The underlying texture for this image will be created immediately from src, so
+     * it can be disposed of after this call. This image will *only* be usable for this
+     * surface (because WebGL textures are not transferable to other WebGL contexts).
+     * For an image that can be used across multiple surfaces, at the cost of being lazily
+     * loaded, see MakeLazyImageFromTextureSource.
+     *
+     * Not available for software-backed surfaces.
+     * @param src
+     * @param info - If provided, will be used to determine the width/height/format of the
+     *               source image. If not, sensible defaults will be used.
+     * @param srcIsPremul - set to true if the src data has premultiplied alpha. Otherwise, it will
+     *               be assumed to be Unpremultiplied. Note: if this is true and info specifies
+     *               Unpremul, Skia will not convert the src pixels first.
+     */
+    makeImageFromTextureSource(src: TextureSource, info?: ImageInfo | PartialImageInfo,
+                               srcIsPremul?: boolean): Image | null;
+
+    /**
      * Returns current contents of the surface as an Image. This image will be optimized to be
      * drawn to another surface of the same type. For example, if this surface is backed by the
      * GPU, the returned Image will be backed by a GPU texture.
@@ -2510,9 +2834,38 @@ export interface Surface extends EmbindObject<Surface> {
     reportBackendTypeIsGPU(): boolean;
 
     /**
+     * A convenient way to draw multiple frames on the canvas associated with this surface.
+     * This requires an environment where a global function called requestAnimationFrame is
+     * available (e.g. on the web, not on Node). Users do not need to flush the surface,
+     * as that is taken care of automatically with this wrapper.
+     *
+     * Users should probably call surface.requestAnimationFrame in the callback function to
+     * draw multiple frames, e.g. of an animation.
+     *
+     * Node users should call getCanvas() and work with that canvas directly.
+     */
+    requestAnimationFrame(drawFrame: (_: Canvas) => void): void;
+
+    /**
      * If this surface is GPU-backed, return the sample count of the surface.
      */
     sampleCnt(): number;
+
+    /**
+     * Updates the underlying GPU texture of the image to be the contents of the provided
+     * TextureSource. Has no effect on CPU backend or if img was not created with either
+     * makeImageFromTextureSource or makeImageFromTexture.
+     * If the provided TextureSource is of different dimensions than the Image, the contents
+     * will be deformed (e.g. squished). The ColorType, AlphaType, and ColorSpace of src should
+     * match the original settings used to create the Image or it may draw strange.
+     *
+     * @param img - A texture-backed Image.
+     * @param src - A valid texture source of any dimensions.
+     * @param srcIsPremul - set to true if the src data has premultiplied alpha. Otherwise, it will
+     *               be assumed to be Unpremultiplied. Note: if this is true and the image was
+     *               created with Unpremul, Skia will not convert.
+     */
+    updateTextureFromSource(img: Image, src: TextureSource, srcIsPremul?: boolean): void;
 
     /**
      * Returns the width of this surface in pixels.
@@ -2528,7 +2881,17 @@ export type TextBlob = EmbindObject<TextBlob>;
 /**
  * See SkTypeface.h for more on this class. The objects are opaque.
  */
-export type Typeface = EmbindObject<Typeface>;
+export interface Typeface extends EmbindObject<Typeface> {
+    /**
+     * Retrieves the glyph ids for each code point in the provided string. Note that glyph IDs
+     * are typeface-dependent; different faces may have different ids for the same code point.
+     * @param str
+     * @param numCodePoints - the number of code points in the string. Defaults to str.length.
+     * @param output - if provided, the results will be copied into this array.
+     */
+    getGlyphIDs(str: string, numCodePoints?: number,
+                output?: GlyphIDArray): GlyphIDArray;
+}
 
 /**
  * See SkVertices.h for more on this class.
@@ -2615,12 +2978,18 @@ export interface StrutStyle {
     fontStyle?: FontStyle;
     fontSize?: number;
     heightMultiplier?: number;
+    halfLeading?: boolean;
     leading?: number;
     forceStrutHeight?: boolean;
 }
 
 export interface TextFontFeatures {
     name: string;
+    value: number;
+}
+
+export interface TextFontVariations {
+    axis: string;
     value: number;
 }
 
@@ -2639,13 +3008,15 @@ export interface TextStyle {
     decoration?: number;
     decorationColor?: InputColor;
     decorationThickness?: number;
-    decrationStyle?: DecorationStyle;
+    decorationStyle?: DecorationStyle;
     fontFamilies?: string[];
     fontFeatures?: TextFontFeatures[];
     fontSize?: number;
     fontStyle?: FontStyle;
+    fontVariations?: TextFontVariations[];
     foregroundColor?: InputColor;
     heightMultiplier?: number;
+    halfLeading?: boolean;
     letterSpacing?: number;
     locale?: string;
     shadows?: TextShadow[];
@@ -2696,6 +3067,15 @@ export interface WebGLOptions {
     preserveDrawingBuffer?: number;
     renderViaOffscreenBackBuffer?: number;
     stencil?: number;
+}
+
+/**
+ * Options for configuring a canvas WebGPU context. If an option is omitted, a default specified by
+ * the WebGPU standard will be used.
+ */
+export interface WebGPUCanvasOptions {
+    format?: GPUTextureFormat;
+    alphaMode?: GPUCanvasAlphaMode;
 }
 
 export interface DefaultConstructor<T> {
@@ -2927,6 +3307,11 @@ export interface ParagraphBuilderFactory {
      * @param fontSrc
      */
     MakeFromFontProvider(style: ParagraphStyle, fontSrc: TypefaceFontProvider): ParagraphBuilder;
+
+    /**
+     * Return a shaped array of lines
+     */
+    ShapeText(text: string, runs: FontBlock[], width?: number): ShapedLine[];
 }
 
 export interface ParagraphStyleConstructor {
@@ -2943,11 +3328,12 @@ export interface ParagraphStyleConstructor {
  */
 export interface ColorFilterFactory {
     /**
-     * Makes a color filter with the given color and blend mode.
+     * Makes a color filter with the given color, blend mode, and colorSpace.
      * @param color
      * @param mode
+     * @param colorSpace - If omitted, will use SRGB
      */
-    MakeBlend(color: InputColor, mode: BlendMode): ColorFilter;
+    MakeBlend(color: InputColor, mode: BlendMode, colorSpace?: ColorSpace): ColorFilter;
 
     /**
      * Makes a color filter composing two color filters.
@@ -2979,6 +3365,12 @@ export interface ColorFilterFactory {
      * Makes a color filter that converts between sRGB colors and linear colors.
      */
     MakeSRGBToLinearGamma(): ColorFilter;
+
+    /**
+     * Makes a color filter that multiplies the luma of its input into the alpha channel,
+     * and sets the red, green, and blue channels to zero.
+     */
+    MakeLuma(): ColorFilter;
 }
 
 export interface ContourMeasureIterConstructor {
@@ -3021,18 +3413,25 @@ export interface FontMgrFactory {
      * @param buffers
      */
     FromData(...buffers: ArrayBuffer[]): FontMgr | null;
-
-    /**
-     * Return the default FontMgr. This will generally have 0 or 1 fonts in it, depending on if
-     * the demo monospace font was compiled in.
-     */
-    RefDefault(): FontMgr;
 }
 
 /**
- * See effects/ImageFilters.h for more.
+ * See //include/effects/SkImageFilters.h for more.
  */
 export interface ImageFilterFactory {
+    /**
+     * Create a filter that takes a BlendMode and uses it to composite the two filters together.
+     *
+     *  At least one of background and foreground should be non-null in nearly all circumstances.
+     *
+     *  @param blend       The blend mode that defines the compositing operation
+     *  @param background The Dst pixels used in blending; if null, use the dynamic source image
+     *                    (e.g. a saved layer).
+     *  @param foreground The Src pixels used in blending; if null, use the dynamic source image.
+     */
+    MakeBlend(blend: BlendMode, background: ImageFilter | null,
+              foreground: ImageFilter | null): ImageFilter;
+
     /**
      * Create a filter that blurs its input by the separate X and Y sigmas. The provided tile mode
      * is used when the blur kernel goes outside the input image.
@@ -3062,15 +3461,111 @@ export interface ImageFilterFactory {
     MakeCompose(outer: ImageFilter | null, inner: ImageFilter | null): ImageFilter;
 
     /**
+     *  Create a filter that dilates each input pixel's channel values to the max value within the
+     *  given radii along the x and y axes.
+     *  @param radiusX  The distance to dilate along the x axis to either side of each pixel.
+     *  @param radiusY  The distance to dilate along the y axis to either side of each pixel.
+     *  @param input     if null, it will use the dynamic source image (e.g. a saved layer).
+     */
+    MakeDilate(radiusX: number, radiusY: number, input: ImageFilter | null): ImageFilter;
+
+    /**
+     *  Create a filter that moves each pixel in its color input based on an (x,y) vector encoded
+     *  in its displacement input filter. Two color components of the displacement image are
+     *  mapped into a vector as scale * (color[xChannel], color[yChannel]), where the channel
+     *  selectors are one of R, G, B, or A.
+     *  The mapping takes the 0-255 RGBA values of the image and scales them to be [-0.5 to 0.5],
+     *  in a similar fashion to https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feDisplacementMap
+     *
+     *  At least one of displacement and color should be non-null in nearly all circumstances.
+     *
+     *  @param xChannel RGBA channel that encodes the x displacement per pixel.
+     *  @param yChannel RGBA channel that encodes the y displacement per pixel.
+     *  @param scale    Scale applied to displacement extracted from image.
+     *  @param displacement The filter defining the displacement image, or null to use source.
+     *  @param color   The filter providing the color pixels to be displaced, or null to use source.
+     */
+    MakeDisplacementMap(xChannel: ColorChannel, yChannel: ColorChannel, scale: number,
+                        displacement: ImageFilter | null, color: ImageFilter | null): ImageFilter;
+    /**
+     *  Create a filter that draws a drop shadow under the input content. This filter produces an
+     *  image that includes the inputs' content.
+     *  @param dx       The X offset of the shadow.
+     *  @param dy       The Y offset of the shadow.
+     *  @param sigmaX   The blur radius for the shadow, along the X axis.
+     *  @param sigmaY   The blur radius for the shadow, along the Y axis.
+     *  @param color    The color of the drop shadow.
+     *  @param input    The input filter; if null, it will use the dynamic source image.
+     */
+    MakeDropShadow(dx: number, dy: number, sigmaX: number, sigmaY: number, color: Color,
+                   input: ImageFilter | null): ImageFilter;
+
+    /**
+     *  Just like MakeDropShadow, except the input content is not in the resulting image.
+     *  @param dx       The X offset of the shadow.
+     *  @param dy       The Y offset of the shadow.
+     *  @param sigmaX   The blur radius for the shadow, along the X axis.
+     *  @param sigmaY   The blur radius for the shadow, along the Y axis.
+     *  @param color    The color of the drop shadow.
+     *  @param input    The input filter; if null, it will use the dynamic source image.
+     */
+    MakeDropShadowOnly(dx: number, dy: number, sigmaX: number, sigmaY: number, color: Color,
+                       input: ImageFilter | null): ImageFilter;
+
+    /**
+     *  Create a filter that erodes each input pixel's channel values to the minimum channel value
+     *  within the given radii along the x and y axes.
+     *  @param radiusX  The distance to erode along the x axis to either side of each pixel.
+     *  @param radiusY  The distance to erode along the y axis to either side of each pixel.
+     *  @param input     if null, it will use the dynamic source image (e.g. a saved layer).
+     */
+    MakeErode(radiusX: number, radiusY: number, input: ImageFilter | null): ImageFilter;
+
+    /**
+     *  Create a filter using the given image as a source. Returns null if 'image' is null.
+     *
+     *  @param img      The image that is output by the filter, subset by 'srcRect'.
+     *  @param sampling The sampling to use when drawing the image.
+     */
+    MakeImage(img: Image, sampling: FilterOptions | CubicResampler): ImageFilter | null;
+
+    /**
+     *  Create a filter that draws the 'srcRect' portion of image into 'dstRect' using the given
+     *  filter quality. Similar to Canvas.drawImageRect. Returns null if 'image' is null.
+     *
+     *  @param img      The image that is output by the filter, subset by 'srcRect'.
+     *  @param sampling The sampling to use when drawing the image.
+     *  @param srcRect  The source pixels sampled into 'dstRect'.
+     *  @param dstRect  The local rectangle to draw the image into.
+     */
+    MakeImage(img: Image, sampling: FilterOptions | CubicResampler,
+              srcRect: InputRect, dstRect: InputRect): ImageFilter | null;
+
+    /**
      * Create a filter that transforms the input image by 'matrix'. This matrix transforms the
      * local space, which means it effectively happens prior to any transformation coming from the
      * Canvas initiating the filtering.
      * @param matr
-     * @param fq
+     * @param sampling
      * @param input - if null, it will use the dynamic source image (e.g. a saved layer)
      */
-    MakeMatrixTransform(matr: InputMatrix, fq: FilterQuality,
+    MakeMatrixTransform(matr: InputMatrix, sampling: FilterOptions | CubicResampler,
                         input: ImageFilter | null): ImageFilter;
+
+    /**
+     *  Create a filter that offsets the input filter by the given vector.
+     *  @param dx       The x offset in local space that the image is shifted.
+     *  @param dy       The y offset in local space that the image is shifted.
+     *  @param input    The input that will be moved, if null, will use the dynamic source image.
+     */
+    MakeOffset(dx: number, dy: number, input: ImageFilter | null): ImageFilter;
+
+    /**
+     * Transforms a shader into an image filter
+     *
+     * @param shader - The Shader to be transformed
+     */
+   MakeShader(shader: Shader): ImageFilter;
 }
 
 /**
@@ -3087,15 +3582,23 @@ export interface MaskFilterFactory {
 }
 
 /**
- * Contains the ways to create an Path.
+ * Contains the ways to create a Path.
  */
 export interface PathConstructorAndFactory extends DefaultConstructor<Path> {
+    /**
+     * Returns true if the two paths contain equal verbs and equal weights.
+     * @param path1 first path to compate
+     * @param path2 second path to compare
+     * @return      true if Path can be interpolated equivalent
+     */
+     CanInterpolate(path1: Path, path2: Path): boolean;
+
     /**
      * Creates a new path from the given list of path commands. If this fails, null will be
      * returned instead.
      * @param cmds
      */
-    MakeFromCmds(cmds: PathCommand[]): Path | null;
+    MakeFromCmds(cmds: InputCommands): Path | null;
 
     /**
      * Creates a new path by combining the given paths according to op. If this fails, null will
@@ -3105,6 +3608,28 @@ export interface PathConstructorAndFactory extends DefaultConstructor<Path> {
      * @param op
      */
     MakeFromOp(one: Path, two: Path, op: PathOp): Path | null;
+
+    /**
+     * Interpolates between Path with point array of equal size.
+     * Copy verb array and weights to result, and set result path to a weighted
+     * average of this path array and ending path.
+     *
+     *  weight is most useful when between zero (ending path) and
+     *  one (this path); will work with values outside of this
+     *  range.
+     *
+     * interpolate() returns undefined if path is not
+     * the same size as ending path. Call isInterpolatable() to check Path
+     * compatibility prior to calling interpolate().
+     *
+     * @param start path to interpolate from
+     * @param end  path to interpolate with
+     * @param weight  contribution of this path, and
+     *                 one minus contribution of ending path
+     * @return        Path replaced by interpolated averages or null if
+     *                not interpolatable
+     */
+    MakeFromPathInterpolation(start: Path, end: Path, weight: number): Path | null;
 
     /**
      * Creates a new path from the provided SVG string. If this fails, null will be
@@ -3156,11 +3681,50 @@ export interface PathEffectFactory {
      * @param seedAssist - modifies the randomness. See SkDiscretePathEffect.h for more.
      */
     MakeDiscrete(segLength: number, dev: number, seedAssist: number): PathEffect;
+
+    /**
+     * Returns a PathEffect that will fill the drawing path with a pattern made by applying
+     * the given matrix to a repeating set of infinitely long lines of the given width.
+     * For example, the scale of the provided matrix will determine how far apart the lines
+     * should be drawn its rotation affects the lines' orientation.
+     * @param width - must be >= 0
+     * @param matrix
+     */
+    MakeLine2D(width: number, matrix: InputMatrix): PathEffect | null;
+
+    /**
+     * Returns a PathEffect which implements dashing by replicating the specified path.
+     *   @param path The path to replicate (dash)
+     *   @param advance The space between instances of path
+     *   @param phase distance (mod advance) along path for its initial position
+     *   @param style how to transform path at each point (based on the current
+     *                position and tangent)
+     */
+    MakePath1D(path: Path, advance: number, phase: number, style: Path1DEffectStyle):
+        PathEffect | null;
+
+    /**
+     * Returns a PathEffect that will fill the drawing path with a pattern by repeating the
+     * given path according to the provided matrix. For example, the scale of the matrix
+     * determines how far apart the path instances should be drawn.
+     * @param matrix
+     * @param path
+     */
+    MakePath2D(matrix: InputMatrix, path: Path): PathEffect | null;
 }
 
 /**
  * See RuntimeEffect.h for more details.
  */
+export interface DebugTrace extends EmbindObject<DebugTrace> {
+    writeTrace(): string;
+}
+
+export interface TracedShader {
+    shader: Shader;
+    debugTrace: DebugTrace;
+}
+
 export interface RuntimeEffectFactory {
     /**
      * Compiles a RuntimeEffect from the given shader code.
@@ -3169,6 +3733,14 @@ export interface RuntimeEffectFactory {
      *                   be printed to console.log().
      */
     Make(sksl: string, callback?: (err: string) => void): RuntimeEffect | null;
+
+    /**
+     * Adds debug tracing to an existing RuntimeEffect.
+     * @param shader - An already-assembled shader, created with RuntimeEffect.makeShader.
+     * @param traceCoordX - the X coordinate of the device-space pixel to trace
+     * @param traceCoordY - the Y coordinate of the device-space pixel to trace
+     */
+    MakeTraced(shader: Shader, traceCoordX: number, traceCoordY: number): TracedShader;
 }
 
 /**
@@ -3204,14 +3776,6 @@ export interface ShaderFactory {
      */
     MakeFractalNoise(baseFreqX: number, baseFreqY: number, octaves: number, seed: number,
                      tileW: number, tileH: number): Shader;
-
-    /**
-     * Returns a shader is a linear interpolation combines the given shaders with a BlendMode.
-     * @param t - range of [0.0, 1.0], indicating how far we should be between one and two.
-     * @param one
-     * @param two
-     */
-    MakeLerp(t: number, one: Shader, two: Shader): Shader;
 
     /**
      * Returns a shader that generates a linear gradient between the two specified points.
@@ -3373,6 +3937,15 @@ export interface TextStyleConstructor {
     new(ts: TextStyle): TextStyle;
 }
 
+export interface TypefaceFactory {
+    /**
+     * Create a typeface using Freetype from the specified bytes and return it. CanvasKit supports
+     * .ttf, .woff and .woff2 fonts. It returns null if the bytes cannot be decoded.
+     * @param fontData
+     */
+    MakeFreeTypeFaceFromData(fontData: ArrayBuffer): Typeface | null;
+}
+
 export interface TypefaceFontProviderFactory {
     /**
      * Return an empty TypefaceFontProvider
@@ -3511,19 +4084,17 @@ export type FlattenedPointArray = Float32Array;
  * be the top, left, right, bottom point for each rectangle.
  */
 export type FlattenedRectangleArray = Float32Array;
+
+export type GlyphIDArray = Uint16Array;
 /**
- * Regardless of the format we use internally for GlyphID (16 bit unsigned atm), we expose them
- * as 32 bit unsigned.
- */
-export type GlyphIDArray = Uint32Array;
-/**
- * PathCommand contains a verb and then any arguments needed to fulfill that path verb.
+ * A command is a verb and then any arguments needed to fulfill that path verb.
+ * InputCommands is a flattened structure of one or more of these.
  * Examples:
- *   [CanvasKit.MOVE_VERB, 0, 10]
- *   [CanvasKit.LINE_VERB, 30, 40]
- * TODO(kjlubick) Make this not be a 2-d array and support typed arrays.
+ *   [CanvasKit.MOVE_VERB, 0, 10,
+ *    CanvasKit.QUAD_VERB, 20, 50, 45, 60,
+ *    CanvasKit.LINE_VERB, 30, 40]
  */
-export type PathCommand = number[];
+export type InputCommands = MallocObj | Float32Array | number[];
 /**
  * VerbList holds verb constants like CanvasKit.MOVE_VERB, CanvasKit.CUBIC_VERB.
  */
@@ -3612,20 +4183,44 @@ export type InputFlattenedRSXFormArray = MallocObj | Float32Array | number[];
  */
 export type InputVector3 = MallocObj | Vector3 | Float32Array;
 
+/**
+ * CanvasKit APIs accept normal arrays, typed arrays, or Malloc'd memory
+ * for bidi regions. Regions are triples of integers
+ * [startIdx, stopIdx, bidiLevel]
+ * where startIdx is inclusive and stopIdx is exclusive.
+ * Length 3 * n where n is the number of regions.
+ */
+export type InputBidiRegions = MallocObj | Uint32Array | number[];
+
+/**
+ * CanvasKit APIs accept normal arrays, typed arrays, or Malloc'd memory for
+ * words, graphemes or line breaks.
+ */
+export type InputWords = MallocObj | Uint32Array | number[];
+export type InputGraphemes = MallocObj | Uint32Array | number[];
+export type InputLineBreaks = MallocObj | Uint32Array | number[];
+
+/**
+ * These are the types that webGL's texImage2D supports as a way to get data from as a texture.
+ * Not listed, but also supported are https://developer.mozilla.org/en-US/docs/Web/API/VideoFrame
+ */
+export type TextureSource = TypedArray | HTMLImageElement | HTMLVideoElement | ImageData | ImageBitmap;
+
 export type AlphaType = EmbindEnumEntity;
 export type BlendMode = EmbindEnumEntity;
 export type BlurStyle = EmbindEnumEntity;
 export type ClipOp = EmbindEnumEntity;
+export type ColorChannel = EmbindEnumEntity;
 export type ColorSpace = EmbindObject<ColorSpace>;
 export type ColorType = EmbindEnumEntity;
 export type EncodedImageFormat = EmbindEnumEntity;
 export type FillType = EmbindEnumEntity;
 export type FilterMode = EmbindEnumEntity;
-export type FilterQuality = EmbindEnumEntity;
 export type FontEdging = EmbindEnumEntity;
 export type FontHinting = EmbindEnumEntity;
 export type MipmapMode = EmbindEnumEntity;
 export type PaintStyle = EmbindEnumEntity;
+export type Path1DEffectStyle = EmbindEnumEntity;
 export type PathOp = EmbindEnumEntity;
 export type PointMode = EmbindEnumEntity;
 export type StrokeCap = EmbindEnumEntity;
@@ -3644,6 +4239,8 @@ export type RectWidthStyle = EmbindEnumEntity;
 export type TextAlign = EmbindEnumEntity;
 export type TextBaseline = EmbindEnumEntity;
 export type TextDirection = EmbindEnumEntity;
+export type LineBreakType = EmbindEnumEntity;
+export type TextHeightBehavior = EmbindEnumEntity;
 
 export interface AffinityEnumValues extends EmbindEnum {
     Upstream: Affinity;
@@ -3717,6 +4314,13 @@ export interface ColorSpaceEnumValues { // not a typical enum, but effectively l
     Equals(a: ColorSpace, b: ColorSpace): boolean;
 }
 
+export interface ColorChannelEnumValues extends EmbindEnum {
+    Red: ColorChannel;
+    Green: ColorChannel;
+    Blue: ColorChannel;
+    Alpha: ColorChannel;
+}
+
 export interface ColorTypeEnumValues extends EmbindEnum {
     Alpha_8: ColorType;
     RGB_565: ColorType;
@@ -3745,13 +4349,6 @@ export interface FillTypeEnumValues extends EmbindEnum {
 export interface FilterModeEnumValues extends EmbindEnum {
     Linear: FilterMode;
     Nearest: FilterMode;
-}
-
-export interface FilterQualityEnumValues extends EmbindEnum {
-    None: FilterQuality;
-    Low: FilterQuality;
-    Medium: FilterQuality;
-    High: FilterQuality;
 }
 
 export interface FontEdgingEnumValues extends EmbindEnum {
@@ -3799,6 +4396,13 @@ export interface FontWidthEnumValues extends EmbindEnum {
     UltraExpanded: FontWidth;
 }
 
+/*
+ *  These values can be OR'd together
+ */
+export interface GlyphRunFlagValues {
+    IsWhiteSpace: number;
+}
+
 export interface ImageFormatEnumValues extends EmbindEnum {
     // TODO(kjlubick) When these are compiled in depending on the availability of the codecs,
     //   be sure to make these nullable.
@@ -3816,6 +4420,15 @@ export interface MipmapModeEnumValues extends EmbindEnum {
 export interface PaintStyleEnumValues extends EmbindEnum {
     Fill: PaintStyle;
     Stroke: PaintStyle;
+}
+
+export interface Path1DEffectStyleEnumValues extends EmbindEnum {
+    // Translate the shape to each position
+    Translate: Path1DEffectStyle;
+    // Rotate the shape about its center
+    Rotate: Path1DEffectStyle;
+    // Transform each point and turn lines into curves
+    Morph: Path1DEffectStyle;
 }
 
 export interface PathOpEnumValues extends EmbindEnum {
@@ -3847,6 +4460,7 @@ export interface RectHeightStyleEnumValues extends EmbindEnum {
     IncludeLineSpacingMiddle: RectHeightStyle;
     IncludeLineSpacingTop: RectHeightStyle;
     IncludeLineSpacingBottom: RectHeightStyle;
+    Strut: RectHeightStyle;
 }
 
 export interface RectWidthStyleEnumValues extends EmbindEnum {
@@ -3883,6 +4497,18 @@ export interface TextBaselineEnumValues extends EmbindEnum {
 export interface TextDirectionEnumValues extends EmbindEnum {
     LTR: TextDirection;
     RTL: TextDirection;
+}
+
+export interface LineBreakTypeEnumValues extends EmbindEnum {
+    SoftLineBreak: LineBreakType;
+    HardtLineBreak: LineBreakType;
+}
+
+export interface TextHeightBehaviorEnumValues extends EmbindEnum {
+    All: TextHeightBehavior;
+    DisableFirstAscent: TextHeightBehavior;
+    DisableLastDescent: TextHeightBehavior;
+    DisableAll: TextHeightBehavior;
 }
 
 export interface TileModeEnumValues extends EmbindEnum {

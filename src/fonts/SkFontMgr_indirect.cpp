@@ -19,10 +19,6 @@
 #include "include/private/SkTArray.h"
 #include "include/private/SkTemplates.h"
 
-namespace gfx {
-  extern void FontDiagnostic(const char* format, ...);
-}
-
 class SkData;
 
 class SkStyleSet_Indirect : public SkFontStyleSet {
@@ -154,13 +150,6 @@ SkTypeface* SkFontMgr_Indirect::onMatchFamilyStyleCharacter(const char familyNam
     return this->createTypefaceFromFontId(id);
 }
 
-SkTypeface* SkFontMgr_Indirect::onMatchFaceStyle(const SkTypeface* familyMember,
-                                                 const SkFontStyle& fontStyle) const {
-    SkString familyName;
-    familyMember->getFamilyName(&familyName);
-    return this->matchFamilyStyle(familyName.c_str(), fontStyle);
-}
-
 sk_sp<SkTypeface> SkFontMgr_Indirect::onMakeFromStreamIndex(std::unique_ptr<SkStreamAsset> stream,
                                                             int ttcIndex) const {
     return fImpl->makeFromStream(std::move(stream), ttcIndex);
@@ -181,7 +170,6 @@ sk_sp<SkTypeface> SkFontMgr_Indirect::onMakeFromData(sk_sp<SkData> data, int ttc
 
 sk_sp<SkTypeface> SkFontMgr_Indirect::onLegacyMakeTypeface(const char familyName[],
                                                            SkFontStyle style) const {
-    gfx::FontDiagnostic("SkFontMgr_Indirect::onLegacyMakeTypeface");
     sk_sp<SkTypeface> face(this->matchFamilyStyle(familyName, style));
 
     if (nullptr == face.get()) {

@@ -7,7 +7,6 @@
 
 #include "gm/gm.h"
 #include "include/core/SkCanvas.h"
-#include "include/core/SkFilterQuality.h"
 #include "include/core/SkFont.h"
 #include "include/core/SkImageFilter.h"
 #include "include/core/SkMatrix.h"
@@ -48,7 +47,7 @@ DEF_SIMPLE_GM(imageresizetiled, canvas, WIDTH, HEIGHT) {
                     "the lazy dog.",
                 };
                 float posY = 0;
-                for (unsigned i = 0; i < SK_ARRAY_COUNT(str); i++) {
+                for (unsigned i = 0; i < std::size(str); i++) {
                     posY += 100.0f;
                     canvas->drawString(str[i], 0.0f, posY, font, SkPaint());
                 }

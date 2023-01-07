@@ -10,7 +10,7 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkColorFilter.h"
-#include "include/core/SkFilterQuality.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkMatrix.h"
@@ -145,7 +145,7 @@ private:
             setPaint.setBlendMode(SkBlendMode::kSrcOver);
             SkSamplingOptions sampling(fm);
 
-            for (size_t m = 0; m < SK_ARRAY_COUNT(matrices); ++m) {
+            for (size_t m = 0; m < std::size(matrices); ++m) {
                 // Draw grid of red lines at interior tile boundaries.
                 static constexpr SkScalar kLineOutset = 10.f;
                 SkPaint paint;
@@ -197,10 +197,10 @@ private:
             canvas->translate(2 * d, 0);
         }
     }
-    static constexpr int kM = 4;
-    static constexpr int kN = 3;
-    static constexpr SkScalar kTileW = 30;
-    static constexpr SkScalar kTileH = 60;
+    inline static constexpr int kM = 4;
+    inline static constexpr int kN = 3;
+    inline static constexpr SkScalar kTileW = 30;
+    inline static constexpr SkScalar kTileH = 60;
     SkCanvas::ImageSetEntry fSet[kM * kN];
 };
 
@@ -245,7 +245,7 @@ private:
         for (SkScalar frac : {0.f, 0.5f}) {
             canvas->save();
             canvas->translate(frac, frac);
-            for (size_t m = 0; m < SK_ARRAY_COUNT(matrices); ++m) {
+            for (size_t m = 0; m < std::size(matrices); ++m) {
                 canvas->save();
                 canvas->concat(matrices[m]);
                 canvas->experimental_DrawEdgeAAImageSet(fSet, kM * kN, nullptr, nullptr,
@@ -269,7 +269,7 @@ private:
                 scaledSet[i].fDstRect.fBottom *= scale.fY;
                 scaledSet[i].fAlpha = 0 == (i % 3) ? 0.4f : 1.f;
             }
-            for (size_t m = 0; m < SK_ARRAY_COUNT(matrices); ++m) {
+            for (size_t m = 0; m < std::size(matrices); ++m) {
                 canvas->save();
                 canvas->concat(matrices[m]);
                 canvas->experimental_DrawEdgeAAImageSet(scaledSet, kM * kN, nullptr, nullptr,
@@ -283,10 +283,10 @@ private:
             canvas->save();
         }
     }
-    static constexpr int kM = 2;
-    static constexpr int kN = 2;
-    static constexpr int kTileW = 40;
-    static constexpr int kTileH = 50;
+    inline static constexpr int kM = 2;
+    inline static constexpr int kN = 2;
+    inline static constexpr int kTileW = 40;
+    inline static constexpr int kTileH = 50;
     SkCanvas::ImageSetEntry fSet[kM * kN];
 };
 
@@ -338,17 +338,19 @@ private:
                 int i = y * kM + x;
                 SkPaint entryPaint = paint;
                 entryPaint.setAlphaf(fSet[i].fAlpha * paint.getAlphaf());
-                canvas->drawImageRect(fSet[i].fImage.get(), fSet[i].fSrcRect, fSet[i].fDstRect,
+                sk_sp<SkImage> orig = sk_ref_sp(const_cast<SkImage*>(fSet[i].fImage.get()));
+                canvas->drawImageRect(ToolUtils::MakeTextureImage(canvas, std::move(orig)),
+                                      fSet[i].fSrcRect, fSet[i].fDstRect,
                                       SkSamplingOptions(), &entryPaint,
                                       SkCanvas::kFast_SrcRectConstraint);
             }
         }
     }
 
-    static constexpr int kM = 4;
-    static constexpr int kN = 4;
-    static constexpr int kTileW = 50;
-    static constexpr int kTileH = 50;
+    inline static constexpr int kM = 4;
+    inline static constexpr int kN = 4;
+    inline static constexpr int kTileW = 50;
+    inline static constexpr int kTileH = 50;
     SkCanvas::ImageSetEntry fSet[kM * kN];
 };
 

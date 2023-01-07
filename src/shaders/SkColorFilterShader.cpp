@@ -16,7 +16,8 @@
 #include "src/shaders/SkColorFilterShader.h"
 
 #if SK_SUPPORT_GPU
-#include "src/gpu/GrFragmentProcessor.h"
+#include "src/gpu/ganesh/GrFPArgs.h"
+#include "src/gpu/ganesh/GrFragmentProcessor.h"
 #endif
 
 SkColorFilterShader::SkColorFilterShader(sk_sp<SkShader> shader,
@@ -84,7 +85,7 @@ skvm::Color SkColorFilterShader::onProgram(skvm::Builder* p,
     }
 
     // Finally run that through the color filter.
-    return fFilter->program(p,c, dst.colorSpace(), uniforms,alloc);
+    return fFilter->program(p,c, dst, uniforms,alloc);
 }
 
 #if SK_SUPPORT_GPU
@@ -102,7 +103,7 @@ std::unique_ptr<GrFragmentProcessor> SkColorFilterShader::asFragmentProcessor(
     SkASSERT(fAlpha == 1.0f);
 
     auto [success, fp] = fFilter->asFragmentProcessor(std::move(shaderFP), args.fContext,
-                                                      *args.fDstColorInfo);
+                                                      *args.fDstColorInfo, args.fSurfaceProps);
     // If the filter FP could not be created, we still want to return the shader FP, so checking
     // success can be omitted here.
     return std::move(fp);

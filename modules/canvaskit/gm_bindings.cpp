@@ -26,6 +26,7 @@
 #include "src/core/SkFontMgrPriv.h"
 #include "src/core/SkMD5.h"
 #include "tests/Test.h"
+#include "tests/TestHarness.h"
 #include "tools/HashAndEncode.h"
 #include "tools/ResourceFactory.h"
 #include "tools/flags/CommandLineFlags.h"
@@ -73,7 +74,7 @@ static sk_sp<GrDirectContext> MakeGrContext(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE cont
     // setup GrDirectContext
     auto interface = GrGLMakeNativeInterface();
     // setup contexts
-    sk_sp<GrDirectContext> dContext(GrDirectContext::MakeGL(interface));
+    sk_sp<GrDirectContext> dContext((GrDirectContext::MakeGL(interface)));
     return dContext;
 }
 
@@ -94,7 +95,7 @@ static sk_sp<SkData> getResource(const char* name) {
   return it->second;
 }
 
-static void LoadResource(std::string name, uintptr_t /* byte* */ bPtr, size_t len) {
+static void LoadResource(std::string name, WASMPointerU8 bPtr, size_t len) {
   const uint8_t* bytes = reinterpret_cast<const uint8_t*>(bPtr);
   auto data = SkData::MakeFromMalloc(bytes, len);
   gResources[name] = std::move(data);
@@ -204,21 +205,21 @@ static JSArray ListTests() {
     SkDebugf("Listing Tests\n");
     JSArray tests = emscripten::val::array();
     for (auto test : skiatest::TestRegistry::Range()) {
-        SkDebugf("test %s\n", test.name);
-        tests.call<void>("push", std::string(test.name));
+        SkDebugf("test %s\n", test.fName);
+        tests.call<void>("push", std::string(test.fName));
     }
     return tests;
 }
 
 static skiatest::Test getTestWithName(std::string name, bool* ok) {
     for (auto test : skiatest::TestRegistry::Range()) {
-        if (name == test.name) {
+        if (name == test.fName) {
           *ok = true;
           return test;
         }
     }
     *ok = false;
-    return skiatest::Test(nullptr, false, nullptr);
+    return skiatest::Test::MakeCPU(nullptr, nullptr);
 }
 
 // Based on DM.cpp:run_test
@@ -249,16 +250,20 @@ static JSObject RunTest(std::string name) {
         return result;
     }
     GrContextOptions grOpts;
-    if (test.needsGpu) {
+    if (test.fTestType == skiatest::TestType::kGanesh) {
         result.set("result", "passed"); // default to passing - the reporter will mark failed.
         WasmReporter reporter(name, result);
-        test.run(&reporter, grOpts);
+        test.modifyGrContextOptions(&grOpts);
+        test.ganesh(&reporter, grOpts);
+        return result;
+    } else if (test.fTestType == skiatest::TestType::kGraphite) {
+        SkDebugf("Graphite test %s not yet supported\n", name.c_str());
         return result;
     }
 
     result.set("result", "passed"); // default to passing - the reporter will mark failed.
     WasmReporter reporter(name, result);
-    test.run(&reporter, grOpts);
+    test.cpu(&reporter);
     return result;
 }
 
@@ -266,7 +271,7 @@ namespace skiatest {
 
 using ContextType = sk_gpu_test::GrContextFactory::ContextType;
 
-// These are the supported GrContextTypeFilterFn
+// These are the supported GrContextTypeFilterFn. They are defined in Test.h and implemented here.
 bool IsGLContextType(ContextType ct) {
     return GrBackendApi::kOpenGL == sk_gpu_test::GrContextFactory::ContextTypeBackend(ct);
 }
@@ -282,10 +287,10 @@ bool IsMetalContextType(ContextType) {return false;}
 bool IsDirect3DContextType(ContextType) {return false;}
 bool IsDawnContextType(ContextType) {return false;}
 
-void RunWithGPUTestContexts(GrContextTestFn* test, GrContextTypeFilterFn* contextTypeFilter,
-                            Reporter* reporter, const GrContextOptions& options) {
+void RunWithGaneshTestContexts(GrContextTestFn* testFn, GrContextTypeFilterFn* filter,
+                               Reporter* reporter, const GrContextOptions& options) {
     for (auto contextType : {ContextType::kGLES_ContextType, ContextType::kMock_ContextType}) {
-        if (contextTypeFilter && !(*contextTypeFilter)(contextType)) {
+        if (filter && !(*filter)(contextType)) {
             continue;
         }
 
@@ -298,7 +303,7 @@ void RunWithGPUTestContexts(GrContextTestFn* test, GrContextTypeFilterFn* contex
         }
         ctxInfo.testContext()->makeCurrent();
         // From DMGpuTestProcs.cpp
-        (*test)(reporter, ctxInfo);
+        (*testFn)(reporter, ctxInfo);
         // Sync so any release/finished procs get called.
         ctxInfo.directContext()->flushAndSubmit(/*sync*/true);
     }
@@ -345,6 +350,10 @@ GLTestContext *CreatePlatformGLTestContext(GrGLStandard forcedGpuAPI,
 void Init() {
     // Use the portable fonts.
     gSkFontMgr_DefaultFactory = &ToolUtils::MakePortableFontMgr;
+}
+
+TestHarness CurrentTestHarness() {
+    return TestHarness::kWasmGMTests;
 }
 
 EMSCRIPTEN_BINDINGS(GMs) {

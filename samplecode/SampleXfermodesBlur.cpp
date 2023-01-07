@@ -104,12 +104,12 @@ protected:
         font.setEdging(SkFont::Edging::kSubpixelAntiAlias);
         setNamedTypeface(&font, "Menlo Regular");
 
-        const int W = 5;
+        const int kWrap = 5;
 
         SkScalar x0 = 0;
         for (int twice = 0; twice < 2; twice++) {
             SkScalar x = x0, y = 0;
-            for (size_t i = 0; i < SK_ARRAY_COUNT(gModes); i++) {
+            for (size_t i = 0; i < std::size(gModes); i++) {
                 SkRect r;
                 r.setLTRB(x, y, x+w, y+h);
 
@@ -131,7 +131,7 @@ protected:
                 SkTextUtils::DrawString(canvas, label, x + w/2, y - font.getSize()/2, font, SkPaint(),
                                         SkTextUtils::kCenter_Align);
                 x += w + SkIntToScalar(10);
-                if ((i % W) == W - 1) {
+                if ((i % kWrap) == kWrap - 1) {
                     x = x0;
                     y += h + SkIntToScalar(30);
                 }

@@ -8,37 +8,50 @@
 #ifndef SKSL_DSL_VAR
 #define SKSL_DSL_VAR
 
+#include "include/private/SkSLStatement.h"
 #include "include/sksl/DSLExpression.h"
 #include "include/sksl/DSLModifiers.h"
 #include "include/sksl/DSLType.h"
+#include "include/sksl/SkSLPosition.h"
+
+#include <cstdint>
+#include <memory>
+#include <string_view>
+#include <utility>
 
 namespace SkSL {
 
+class Expression;
+class ExpressionArray;
 class Variable;
 enum class VariableStorage : int8_t;
 
 namespace dsl {
 
-class DSLVar {
+class DSLVarBase {
 public:
     /**
-     * Constructs a new variable with the specified type and name. The name is used (in mangled
-     * form) in the resulting shader code; it is not otherwise important. Since mangling prevents
-     * name conflicts and the variable's name is only important when debugging shaders, the name
-     * parameter is optional.
+     * Constructs a new variable with the specified type and name.
      */
-    DSLVar(DSLType type, const char* name = "var", DSLExpression initialValue = DSLExpression());
+    DSLVarBase(VariableStorage storage, DSLType type, std::string_view name,
+               DSLExpression initialValue, Position pos, Position namePos);
 
-    DSLVar(DSLType type, DSLExpression initialValue);
+    DSLVarBase(VariableStorage storage, const DSLModifiers& modifiers, DSLType type,
+               std::string_view name, DSLExpression initialValue, Position pos, Position namePos);
 
-    DSLVar(DSLModifiers modifiers, DSLType type, const char* name = "var",
-           DSLExpression initialValue = DSLExpression());
+    DSLVarBase(DSLVarBase&&) = default;
 
-    DSLVar(DSLModifiers modifiers, DSLType type, DSLExpression initialValue);
+    std::string_view name() const {
+        return fName;
+    }
 
-    DSLVar(DSLVar&&) = delete;
+    const DSLModifiers& modifiers() const {
+        return fModifiers;
+    }
 
-    ~DSLVar();
+    VariableStorage storage() const {
+        return fStorage;
+    }
 
     DSLExpression x() {
         return DSLExpression(*this).x();
@@ -72,74 +85,142 @@ public:
         return DSLExpression(*this).a();
     }
 
-    DSLExpression field(const char* name) {
+    DSLExpression field(std::string_view name) {
         return DSLExpression(*this).field(name);
     }
 
-    DSLPossibleExpression operator=(DSLVar& var) {
-        return this->operator=(DSLExpression(var));
-    }
+    DSLExpression operator[](DSLExpression&& index);
 
-    DSLPossibleExpression operator=(DSLExpression expr);
-
-    DSLPossibleExpression operator=(int expr) {
-        return this->operator=(DSLExpression(expr));
-    }
-
-    DSLPossibleExpression operator=(float expr) {
-        return this->operator=(DSLExpression(expr));
-    }
-
-    DSLPossibleExpression operator[](DSLExpression&& index);
-
-    DSLPossibleExpression operator++() {
+    DSLExpression operator++() {
         return ++DSLExpression(*this);
     }
 
-    DSLPossibleExpression operator++(int) {
+    DSLExpression operator++(int) {
         return DSLExpression(*this)++;
     }
 
-    DSLPossibleExpression operator--() {
+    DSLExpression operator--() {
         return --DSLExpression(*this);
     }
 
-    DSLPossibleExpression operator--(int) {
+    DSLExpression operator--(int) {
         return DSLExpression(*this)--;
     }
 
-private:
-    /**
-     * Constructs a reference to a variable that already exists in the symbol table. This is used
-     * internally to reference built-in vars.
-     */
-    DSLVar(const char* name);
-
-    const char* name() const {
-        return fName;
+    template <class T> DSLExpression assign(T&& param) {
+        return this->assignExpression(DSLExpression(std::forward<T>(param)));
     }
+
+protected:
+    /**
+     * Creates an empty, unpopulated var. Can be replaced with a real var later via `swap`.
+     */
+    DSLVarBase(VariableStorage storage) : fType(kVoid_Type), fStorage(storage) {}
+
+    DSLExpression assignExpression(DSLExpression other);
+
+    void swap(DSLVarBase& other);
 
     DSLModifiers fModifiers;
     // We only need to keep track of the type here so that we can create the SkSL::Variable. For
     // predefined variables this field is unnecessary, so we don't bother tracking it and just set
     // it to kVoid; in other words, you shouldn't generally be relying on this field to be correct.
-    // If you need to determine the variable's type, look at DSLWriter::Var(...).type() instead.
+    // If you need to determine the variable's type, look at DSLWriter::Var(...)->type() instead.
     DSLType fType;
-    int fUniformHandle;
     std::unique_ptr<SkSL::Statement> fDeclaration;
-    const SkSL::Variable* fVar = nullptr;
-    const char* fRawName; // for error reporting
-    const char* fName;
+    SkSL::Variable* fVar = nullptr;
+    Position fNamePosition;
+    std::string_view fName;
     DSLExpression fInitialValue;
+    Position fPosition;
     VariableStorage fStorage;
-    bool fDeclared = false;
-
-    friend DSLVar sk_SampleCoord();
+    bool fInitialized = false;
 
     friend class DSLCore;
-    friend class DSLExpression;
     friend class DSLFunction;
     friend class DSLWriter;
+};
+
+/**
+ * A local variable.
+ */
+class DSLVar : public DSLVarBase {
+public:
+    DSLVar();
+
+    DSLVar(DSLType type, std::string_view name, DSLExpression initialValue = DSLExpression(),
+           Position pos = {}, Position namePos = {});
+
+    DSLVar(const DSLModifiers& modifiers, DSLType type, std::string_view name,
+           DSLExpression initialValue = DSLExpression(), Position pos = {}, Position namePos = {});
+
+    DSLVar(DSLVar&&) = default;
+
+    void swap(DSLVar& other);
+
+private:
+    using INHERITED = DSLVarBase;
+};
+
+/**
+ * A global variable.
+ */
+class DSLGlobalVar : public DSLVarBase {
+public:
+    DSLGlobalVar();
+
+    DSLGlobalVar(DSLType type, std::string_view name, DSLExpression initialValue = DSLExpression(),
+                 Position pos = {}, Position namePos = {});
+
+    DSLGlobalVar(const DSLModifiers& modifiers, DSLType type, std::string_view name,
+                 DSLExpression initialValue = DSLExpression(),
+                 Position pos = {}, Position namePos = {});
+
+    DSLGlobalVar(const char* name);
+
+    DSLGlobalVar(DSLGlobalVar&&) = default;
+
+    void swap(DSLGlobalVar& other);
+
+    /**
+     * Implements the following method calls:
+     *     half4 shader::eval(float2 coords);
+     *     half4 colorFilter::eval(half4 input);
+     */
+    DSLExpression eval(DSLExpression x, Position pos = {});
+
+    /**
+     * Implements the following method call:
+     *     half4 blender::eval(half4 src, half4 dst);
+     */
+    DSLExpression eval(DSLExpression x, DSLExpression y, Position pos = {});
+
+private:
+    DSLExpression eval(ExpressionArray args, Position pos);
+
+    std::unique_ptr<SkSL::Expression> methodCall(std::string_view methodName, Position pos);
+
+    using INHERITED = DSLVarBase;
+};
+
+/**
+ * A function parameter.
+ */
+class DSLParameter : public DSLVarBase {
+public:
+    DSLParameter();
+
+    DSLParameter(DSLType type, std::string_view name, Position pos = {}, Position namePos = {});
+
+    DSLParameter(const DSLModifiers& modifiers, DSLType type, std::string_view name,
+                 Position pos = {}, Position namePos = {});
+
+    DSLParameter(DSLParameter&&) = default;
+
+    void swap(DSLParameter& other);
+
+private:
+    using INHERITED = DSLVarBase;
 };
 
 } // namespace dsl

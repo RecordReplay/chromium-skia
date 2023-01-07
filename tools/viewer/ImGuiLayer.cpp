@@ -30,7 +30,7 @@ static void build_ImFontAtlas(ImFontAtlas& atlas, SkPaint& fontPaint) {
     SkPixmap pmap(info, pixels, info.minRowBytes());
     SkMatrix localMatrix = SkMatrix::Scale(1.0f / w, 1.0f / h);
     auto fontImage = SkImage::MakeFromRaster(pmap, nullptr, nullptr);
-    auto fontShader = fontImage->makeShader(SkSamplingOptions(kLow_SkFilterQuality), localMatrix);
+    auto fontShader = fontImage->makeShader(SkSamplingOptions(SkFilterMode::kLinear), localMatrix);
     fontPaint.setShader(fontShader);
     fontPaint.setColor(SK_ColorWHITE);
     atlas.TexID = &fontPaint;
@@ -76,7 +76,7 @@ void ImGuiLayer::setScaleFactor(float scaleFactor) {
     atlas.Clear();
     ImFontConfig cfg;
     cfg.SizePixels = 13 * scaleFactor;
-    atlas.AddFontDefault(&cfg)->DisplayOffset.y = scaleFactor;
+    atlas.AddFontDefault(&cfg);
     build_ImFontAtlas(atlas, fFontPaint);
 }
 
@@ -164,7 +164,7 @@ void ImGuiLayer::onPaint(SkSurface* surface) {
         const ImDrawList* drawList = drawData->CmdLists[i];
 
         // De-interleave all vertex data (sigh), convert to Skia types
-        pos.rewind(); uv.rewind(); color.rewind();
+        pos.clear(); uv.clear(); color.clear();
         for (int j = 0; j < drawList->VtxBuffer.size(); ++j) {
             const ImDrawVert& vert = drawList->VtxBuffer[j];
             pos.push_back(SkPoint::Make(vert.pos.x, vert.pos.y));
@@ -172,7 +172,7 @@ void ImGuiLayer::onPaint(SkSurface* surface) {
             color.push_back(vert.col);
         }
         // ImGui colors are RGBA
-        SkSwapRB(color.begin(), color.begin(), color.count());
+        SkSwapRB(color.begin(), color.begin(), color.size());
 
         int indexOffset = 0;
 

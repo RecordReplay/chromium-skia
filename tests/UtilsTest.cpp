@@ -6,9 +6,9 @@
  */
 
 #include "include/core/SkRefCnt.h"
+#include "include/core/SkSpan.h"
 #include "include/utils/SkRandom.h"
 #include "src/core/SkEnumerate.h"
-#include "src/core/SkSpan.h"
 #include "src/core/SkTSearch.h"
 #include "src/core/SkTSort.h"
 #include "src/core/SkZip.h"
@@ -175,57 +175,6 @@ DEF_TEST(Utils, reporter) {
     test_autostarray(reporter);
 }
 
-DEF_TEST(SkSpan, reporter) {
-    // Test constness preservation for SkMakeSpan.
-    {
-        std::vector<int> v = {{1, 2, 3, 4, 5}};
-        auto s = SkSpan(v);
-        REPORTER_ASSERT(reporter, s[3] == 4);
-        s[3] = 100;
-        REPORTER_ASSERT(reporter, s[3] == 100);
-    }
-
-    {
-        std::vector<int> t = {{1, 2, 3, 4, 5}};
-        const std::vector<int>& v = t;
-        auto s = SkSpan(v);
-        //s[3] = 100; // Should fail to compile
-        REPORTER_ASSERT(reporter, s[3] == 4);
-        REPORTER_ASSERT(reporter, t[3] == 4);
-        t[3] = 100;
-        REPORTER_ASSERT(reporter, s[3] == 100);
-    }
-
-    {
-        std::array<int, 5> v = {{1, 2, 3, 4, 5}};
-        auto s = SkSpan(v);
-        REPORTER_ASSERT(reporter, s[3] == 4);
-        s[3] = 100;
-        REPORTER_ASSERT(reporter, s[3] == 100);
-        auto s1 = s.subspan(1,3);
-        REPORTER_ASSERT(reporter, s1.size() == 3);
-        REPORTER_ASSERT(reporter, s1.front() == 2);
-        REPORTER_ASSERT(reporter, s1.back() == 100);
-    }
-
-    {
-        std::array<int, 5> t = {{1, 2, 3, 4, 5}};
-        const std::array<int, 5>& v = t;
-        auto s = SkSpan(v);
-        //s[3] = 100; // Should fail to compile
-        REPORTER_ASSERT(reporter, s[3] == 4);
-        REPORTER_ASSERT(reporter, t[3] == 4);
-        t[3] = 100;
-        REPORTER_ASSERT(reporter, s[3] == 100);
-    }
-
-    {
-        std::vector<int> v;
-        auto s = SkSpan(v);
-        REPORTER_ASSERT(reporter, s.empty());
-    }
-}
-
 DEF_TEST(SkEnumerate, reporter) {
 
     int A[] = {1, 2, 3, 4};
@@ -285,6 +234,63 @@ DEF_TEST(SkEnumerate, reporter) {
             REPORTER_ASSERT(reporter, v == (int) i + 1);
         }
         REPORTER_ASSERT(reporter, e.size() == 2);
+    }
+
+    {
+        struct I {
+            I() = default;
+            I(const I&) = default;
+            I(int v) : i{v} { }
+            ~I() {}
+            int i;
+        };
+
+        I is[10];
+        auto s = SkSpan(is);
+        for (auto [i, v] : SkMakeEnumerate(s)) {
+            new (&v) I(i);
+        }
+
+        for (size_t i = 0; i < s.size(); i++) {
+            REPORTER_ASSERT(reporter, s[i].i == (int)i);
+            REPORTER_ASSERT(reporter, is[i].i == (int)i);
+        }
+    }
+
+    {
+        std::unique_ptr<int> is[10];
+        std::unique_ptr<int> os[10];
+        auto s = SkSpan(is);
+        for (auto [i, v] : SkMakeEnumerate(s)) {
+            v = std::make_unique<int>(i);
+        }
+
+        for (auto [i, v] : SkMakeEnumerate(SkSpan(os))) {
+            v = std::move(s[i]);
+        }
+
+        for (size_t i = 0; i < s.size(); i++) {
+            REPORTER_ASSERT(reporter, *os[i] == (int)i);
+            REPORTER_ASSERT(reporter, is[i] == nullptr);
+        }
+    }
+
+    {
+        std::unique_ptr<int> is[10];
+        std::unique_ptr<int> os[10];
+        auto s = SkSpan(is);
+        for (auto [i, v] : SkMakeEnumerate(s)) {
+            v = std::make_unique<int>(i);
+        }
+
+        for (auto [i, ov, iv] : SkMakeEnumerate(SkMakeZip(os, is))) {
+            ov = std::move(iv);
+        }
+
+        for (size_t i = 0; i < s.size(); i++) {
+            REPORTER_ASSERT(reporter, *os[i] == (int)i);
+            REPORTER_ASSERT(reporter, is[i] == nullptr);
+        }
     }
 }
 

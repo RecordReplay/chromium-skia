@@ -10,7 +10,6 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkColorFilter.h"
-#include "include/core/SkFilterQuality.h"
 #include "include/core/SkFont.h"
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkFontTypes.h"
@@ -101,7 +100,7 @@ protected:
             { 2, -30, 310, 30 },    // scale + rotate + translate
         };
 
-        const int N = SK_ARRAY_COUNT(rec);
+        const int N = std::size(rec);
         SkRSXform xform[N];
         SkRect tex[N];
         SkColor colors[N];
@@ -272,7 +271,7 @@ DEF_SIMPLE_GM(blob_rsxform_distortable, canvas, 500, 100) {
             { SkSetFourByteTag('w','g','h','t'), 1.618033988749895f }
         };
         SkFontArguments params;
-        params.setVariationDesignPosition({position, SK_ARRAY_COUNT(position)});
+        params.setVariationDesignPosition({position, std::size(position)});
         typeface = fm->makeFromStream(std::move(distortable), params);
     }
 

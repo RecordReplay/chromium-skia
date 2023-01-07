@@ -4,23 +4,29 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
-
-#include "include/core/SkTypes.h"
-
-#include "include/core/SkBitmap.h"
-#include "include/core/SkCanvas.h"
-#include "include/core/SkColor.h"
-#include "include/core/SkPaint.h"
-#include "include/core/SkPath.h"
-#include "include/core/SkRRect.h"
-#include "include/core/SkRect.h"
-#include "include/core/SkSurface.h"
-#include "include/effects/SkDashPathEffect.h"
-#include "include/gpu/GrDirectContext.h"
-#include "src/gpu/geometry/GrStyledShape.h"
 #include "tests/Test.h"
 
+#include "include/core/SkCanvas.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkImageInfo.h"
+#include "include/core/SkMatrix.h"
+#include "include/core/SkPaint.h"
+#include "include/core/SkPath.h"
+#include "include/core/SkPathEffect.h"
+#include "include/core/SkPathTypes.h"
+#include "include/core/SkRRect.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkSurface.h"
+#include "include/core/SkTypes.h"
+#include "include/effects/SkDashPathEffect.h"
+#include "include/gpu/GrDirectContext.h"
+#include "tests/CtsEnforcement.h"
+
 #include <initializer_list>
+
+struct GrContextOptions;
 
 static void test_drawPathEmpty(skiatest::Reporter*, SkCanvas* canvas) {
     // Filling an empty path should not crash.
@@ -73,7 +79,7 @@ static void test_drawSameRectOvals(skiatest::Reporter*, SkCanvas* canvas) {
     fill_and_stroke(canvas, oval1, oval2, SkDashPathEffect::Make(intervals, 2, 0));
 }
 
-DEF_GPUTEST_FOR_ALL_GL_CONTEXTS(GpuDrawPath, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_ALL_GL_CONTEXTS(GpuDrawPath, reporter, ctxInfo, CtsEnforcement::kNever) {
     for (auto& test_func : { &test_drawPathEmpty, &test_drawSameRectOvals }) {
         for (auto& sampleCount : {1, 4, 16}) {
             SkImageInfo info = SkImageInfo::MakeN32Premul(255, 255);
@@ -88,7 +94,10 @@ DEF_GPUTEST_FOR_ALL_GL_CONTEXTS(GpuDrawPath, reporter, ctxInfo) {
     }
 }
 
-DEF_GPUTEST_FOR_ALL_CONTEXTS(GrDrawCollapsedPath, reporter, ctxInfo) {
+DEF_GANESH_TEST_FOR_ALL_CONTEXTS(GrDrawCollapsedPath,
+                                 reporter,
+                                 ctxInfo,
+                                 CtsEnforcement::kApiLevel_T) {
     // From https://bugs.fuchsia.dev/p/fuchsia/issues/detail?id=37330, it's possible for a convex
     // path to be accepted by AAConvexPathRenderer, then be transformed to something without a
     // computable first direction by a perspective matrix.
@@ -109,6 +118,27 @@ DEF_GPUTEST_FOR_ALL_CONTEXTS(GrDrawCollapsedPath, reporter, ctxInfo) {
              -0.00885376986f , -0.112347461f  , 64.7121124f,
              -8.94321693e-06f, -0.00173384184f, 0.998692870f);
     surface->getCanvas()->setMatrix(m);
+    surface->getCanvas()->drawPath(path, paint);
+    surface->flushAndSubmit();
+}
+
+DEF_GANESH_TEST_FOR_ALL_CONTEXTS(PathTest_CrBug1232834,
+                                 reporter,
+                                 ctxInfo,
+                                 CtsEnforcement::kApiLevel_T) {
+    // AAHairlinePathRenderer chops this path to quads that include infinities (and then NaNs).
+    // It used to trigger asserts, now the degenerate quad segments should cause it to be rejected.
+    SkImageInfo info = SkImageInfo::MakeN32Premul(256, 256);
+    auto surface(SkSurface::MakeRenderTarget(ctxInfo.directContext(), SkBudgeted::kNo, info));
+
+    SkPaint paint;
+    paint.setAntiAlias(true);
+    paint.setStyle(SkPaint::kStroke_Style);
+
+    SkPath path;
+    path.moveTo(9.0072E15f, 60);
+    path.cubicTo(0, 3.40282e+38f, 0, 3.40282e+38f, 0, 0);
+
     surface->getCanvas()->drawPath(path, paint);
     surface->flushAndSubmit();
 }

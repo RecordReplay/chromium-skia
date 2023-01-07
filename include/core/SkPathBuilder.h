@@ -11,6 +11,7 @@
 #include "include/core/SkMatrix.h"
 #include "include/core/SkPath.h"
 #include "include/core/SkPathTypes.h"
+#include "include/core/SkRefCnt.h"
 #include "include/private/SkTDArray.h"
 
 class SK_API SkPathBuilder {
@@ -228,6 +229,7 @@ private:
 
     unsigned    fSegmentMask;
     SkPoint     fLastMovePoint;
+    int         fLastMoveIndex; // only needed until SkPath is immutable
     bool        fNeedsMoveVerb;
 
     enum IsA {
@@ -240,10 +242,7 @@ private:
     int fIsAStart = -1;     // tracks direction iff fIsA is not unknown
     bool fIsACCW  = false;  // tracks direction iff fIsA is not unknown
 
-    // for testing
-    SkPathConvexity fOverrideConvexity = SkPathConvexity::kUnknown;
-
-    int countVerbs() const { return fVerbs.count(); }
+    int countVerbs() const { return fVerbs.size(); }
 
     // called right before we add a (non-move) verb
     void ensureMove() {
@@ -256,9 +255,6 @@ private:
     SkPath make(sk_sp<SkPathRef>) const;
 
     SkPathBuilder& privateReverseAddPath(const SkPath&);
-
-    // For testing
-    void privateSetConvexity(SkPathConvexity c) { fOverrideConvexity = c; }
 
     friend class SkPathPriv;
 };

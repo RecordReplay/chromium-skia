@@ -7,49 +7,42 @@
 
 #include "src/sksl/SkSLPool.h"
 
-#include "include/private/SkSLDefines.h"
+#include "include/core/SkTypes.h"
+
+#if SK_SUPPORT_GPU
+// With GPU support, SkSL::MemoryPool is really GrMemoryPool
+#include "src/gpu/ganesh/GrMemoryPool.h"
+#endif
 
 #define VLOG(...) // printf(__VA_ARGS__)
 
 namespace SkSL {
 
-#if SKSL_USE_THREAD_LOCAL
+//static thread_local MemoryPool* sMemPool = nullptr;
 
-static thread_local MemoryPool* sMemPool = nullptr;
+static MemoryPool*& memory_pool_location() {
+  static pthread_key_t key;
+  if (!key) {
+    int rv = pthread_key_create(&key, nullptr);
+    SkASSERT_RELEASE(rv == 0);
+    SkASSERT_RELEASE(key);
+  }
+
+  MemoryPool** v = (MemoryPool**)pthread_getspecific(key);
+  if (!v) {
+    v = new MemoryPool*(nullptr);
+    pthread_setspecific(key, v);
+  }
+  return *v;
+}
 
 static MemoryPool* get_thread_local_memory_pool() {
-    return sMemPool;
+    return memory_pool_location();
 }
 
 static void set_thread_local_memory_pool(MemoryPool* memPool) {
-    sMemPool = memPool;
+    memory_pool_location() = memPool;
 }
-
-#else
-
-#include <pthread.h>
-
-static pthread_key_t get_pthread_key() {
-    static pthread_key_t sKey = []{
-        pthread_key_t key;
-        int result = pthread_key_create(&key, /*destructor=*/nullptr);
-        if (result != 0) {
-            SK_ABORT("pthread_key_create failure: %d", result);
-        }
-        return key;
-    }();
-    return sKey;
-}
-
-static MemoryPool* get_thread_local_memory_pool() {
-    return static_cast<MemoryPool*>(pthread_getspecific(get_pthread_key()));
-}
-
-static void set_thread_local_memory_pool(MemoryPool* poolData) {
-    pthread_setspecific(get_pthread_key(), poolData);
-}
-
-#endif // SKSL_USE_THREAD_LOCAL
 
 Pool::~Pool() {
     if (get_thread_local_memory_pool() == fMemPool.get()) {
@@ -68,6 +61,10 @@ std::unique_ptr<Pool> Pool::Create() {
     pool->fMemPool = MemoryPool::Make(/*preallocSize=*/65536, /*minAllocSize=*/32768);
     VLOG("CREATE Pool:0x%016llX\n", (uint64_t)pool->fMemPool.get());
     return pool;
+}
+
+bool Pool::IsAttached() {
+    return get_thread_local_memory_pool();
 }
 
 void Pool::attachToThread() {

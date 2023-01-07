@@ -60,44 +60,6 @@ DEF_SIMPLE_GM(savelayer_initfromprev, canvas, 256, 256) {
     canvas->restore();
 };
 
-DEF_SIMPLE_GM(savelayer_coverage, canvas, 500, 500) {
-    canvas->saveLayer(nullptr, nullptr);
-
-    SkRect r = { 0, 0, 200, 200 };
-    SkPaint layerPaint;
-    layerPaint.setBlendMode(SkBlendMode::kModulate);
-
-    auto image = GetResourceAsImage("images/mandrill_128.png");
-
-    auto proc = [layerPaint](SkCanvas* canvas, SkCanvas::SaveLayerRec& rec) {
-        SkPaint paint;
-        paint.setColor(SK_ColorRED);
-
-        canvas->saveLayer(rec);
-        canvas->drawCircle(100, 100, 50, paint);
-        paint.setColor(0x8800FF00);
-        canvas->drawRect({10, 90, 190, 110}, paint);
-        canvas->restore();
-    };
-
-    const int yflags[] = { 0, SkCanvas::kInitWithPrevious_SaveLayerFlag };
-    for (int y = 0; y <= 1; ++y) {
-        const int xflags[] = { 0, SkCanvas::kMaskAgainstCoverage_EXPERIMENTAL_DONT_USE_SaveLayerFlag };
-        for (int x = 0; x <= 1; ++x) {
-            canvas->save();
-            canvas->translate(x * 200.f, y * 200.f);
-
-            SkCanvas::SaveLayerRec rec(&r, &layerPaint, yflags[y] | xflags[x]);
-            canvas->drawImageRect(image, r, SkSamplingOptions(), nullptr);
-            proc(canvas, rec);
-
-            canvas->restore();
-        }
-    }
-
-    canvas->restore();
-}
-
 static void draw_cell(SkCanvas* canvas, sk_sp<SkTextBlob> blob, SkColor c, SkScalar w, SkScalar h,
                       bool useDrawBehind) {
     SkRect r = SkRect::MakeWH(w, h);
@@ -190,7 +152,7 @@ DEF_SIMPLE_GM(savelayer_f16, canvas, 900, 300) {
 
     const SkColor colors[] = { SK_ColorRED, SK_ColorGREEN, SK_ColorBLUE, SK_ColorRED };
     paint.setShader(SkGradientShader::MakeSweep(r.centerX(), r.centerY(),
-                                                colors, nullptr, SK_ARRAY_COUNT(colors)));
+                                                colors, nullptr, std::size(colors)));
 
     canvas->drawOval(r, paint);
 

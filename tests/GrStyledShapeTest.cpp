@@ -10,9 +10,9 @@
 #include "include/core/SkSurface.h"
 #include "include/effects/SkDashPathEffect.h"
 #include "include/pathops/SkPathOps.h"
-#include "src/core/SkClipOpPriv.h"
+#include "src/core/SkPathEffectBase.h"
 #include "src/core/SkRectPriv.h"
-#include "src/gpu/geometry/GrStyledShape.h"
+#include "src/gpu/ganesh/geometry/GrStyledShape.h"
 #include "tests/Test.h"
 
 #include <initializer_list>
@@ -70,7 +70,7 @@ static bool test_bounds_by_rasterizing(const SkPath& path, const SkRect& bounds)
     SkRect clip = SkRect::MakeXYWH(kRes/4, kRes/4, kRes/2, kRes/2);
     SkMatrix matrix = SkMatrix::RectToRect(bounds, clip);
     clip.outset(SkIntToScalar(kTol), SkIntToScalar(kTol));
-    surface->getCanvas()->clipRect(clip, kDifference_SkClipOp);
+    surface->getCanvas()->clipRect(clip, SkClipOp::kDifference);
     surface->getCanvas()->concat(matrix);
     SkPaint whitePaint;
     whitePaint.setColor(SK_ColorWHITE);
@@ -759,12 +759,12 @@ void TestCase::compare(skiatest::Reporter* r, const TestCase& that,
 static sk_sp<SkPathEffect> make_dash() {
     static const SkScalar kIntervals[] = { 0.25, 3.f, 0.5, 2.f };
     static const SkScalar kPhase = 0.75;
-    return SkDashPathEffect::Make(kIntervals, SK_ARRAY_COUNT(kIntervals), kPhase);
+    return SkDashPathEffect::Make(kIntervals, std::size(kIntervals), kPhase);
 }
 
 static sk_sp<SkPathEffect> make_null_dash() {
     static const SkScalar kNullIntervals[] = {0, 0, 0, 0, 0, 0};
-    return SkDashPathEffect::Make(kNullIntervals, SK_ARRAY_COUNT(kNullIntervals), 0.f);
+    return SkDashPathEffect::Make(kNullIntervals, std::size(kNullIntervals), 0.f);
 }
 
 // We make enough TestCases, and they're large enough, that on Google3 builds we exceed
@@ -1155,7 +1155,7 @@ void test_path_effect_makes_rrect(skiatest::Reporter* reporter, const Geo& geo) 
      * This path effect takes any input path and turns it into a rrect. It passes through stroke
      * info.
      */
-    class RRectPathEffect : SkPathEffect {
+    class RRectPathEffect : SkPathEffectBase {
     public:
         static const SkRRect& RRect() {
             static const SkRRect kRRect = SkRRect::MakeRectXY(SkRect::MakeWH(12, 12), 3, 5);
@@ -1168,14 +1168,17 @@ void test_path_effect_makes_rrect(skiatest::Reporter* reporter, const Geo& geo) 
 
     protected:
         bool onFilterPath(SkPath* dst, const SkPath& src, SkStrokeRec*,
-                          const SkRect* cullR) const override {
+                          const SkRect* cullR, const SkMatrix&) const override {
             dst->reset();
             dst->addRRect(RRect());
             return true;
         }
 
-        SkRect onComputeFastBounds(const SkRect& src) const override {
-            return RRect().getBounds();
+        bool computeFastBounds(SkRect* bounds) const override {
+            if (bounds) {
+                *bounds = RRect().getBounds();
+            }
+            return true;
         }
 
     private:
@@ -1242,7 +1245,7 @@ void test_unknown_path_effect(skiatest::Reporter* reporter, const Geo& geo) {
     /**
      * This path effect just adds two lineTos to the input path.
      */
-    class AddLineTosPathEffect : SkPathEffect {
+    class AddLineTosPathEffect : SkPathEffectBase {
     public:
         static sk_sp<SkPathEffect> Make() { return sk_sp<SkPathEffect>(new AddLineTosPathEffect); }
         Factory getFactory() const override { return nullptr; }
@@ -1250,7 +1253,7 @@ void test_unknown_path_effect(skiatest::Reporter* reporter, const Geo& geo) {
 
     protected:
         bool onFilterPath(SkPath* dst, const SkPath& src, SkStrokeRec*,
-                          const SkRect* cullR) const override {
+                          const SkRect* cullR, const SkMatrix&) const override {
             *dst = src;
             // To avoid triggering data-based keying of paths with few verbs we add many segments.
             for (int i = 0; i < 100; ++i) {
@@ -1258,11 +1261,12 @@ void test_unknown_path_effect(skiatest::Reporter* reporter, const Geo& geo) {
             }
             return true;
         }
-        SkRect onComputeFastBounds(const SkRect& src) const override {
-            SkRect dst = src;
-            SkRectPriv::GrowToInclude(&dst, {0, 0});
-            SkRectPriv::GrowToInclude(&dst, {100, 100});
-            return dst;
+        bool computeFastBounds(SkRect* bounds) const override {
+            if (bounds) {
+                SkRectPriv::GrowToInclude(bounds, {0, 0});
+                SkRectPriv::GrowToInclude(bounds, {100, 100});
+            }
+            return true;
         }
     private:
         AddLineTosPathEffect() {}
@@ -1287,7 +1291,7 @@ void test_make_hairline_path_effect(skiatest::Reporter* reporter, const Geo& geo
     /**
      * This path effect just changes the stroke rec to hairline.
      */
-    class MakeHairlinePathEffect : SkPathEffect {
+    class MakeHairlinePathEffect : SkPathEffectBase {
     public:
         static sk_sp<SkPathEffect> Make() {
             return sk_sp<SkPathEffect>(new MakeHairlinePathEffect);
@@ -1297,12 +1301,14 @@ void test_make_hairline_path_effect(skiatest::Reporter* reporter, const Geo& geo
 
     protected:
         bool onFilterPath(SkPath* dst, const SkPath& src, SkStrokeRec* strokeRec,
-                          const SkRect* cullR) const override {
+                          const SkRect* cullR, const SkMatrix&) const override {
             *dst = src;
             strokeRec->setHairlineStyle();
             return true;
         }
     private:
+        bool computeFastBounds(SkRect* bounds) const override { return true; }
+
         MakeHairlinePathEffect() {}
     };
 
@@ -1370,7 +1376,7 @@ void test_path_effect_makes_empty_shape(skiatest::Reporter* reporter, const Geo&
     /**
      * This path effect returns an empty path (possibly inverted)
      */
-    class EmptyPathEffect : SkPathEffect {
+    class EmptyPathEffect : SkPathEffectBase {
     public:
         static sk_sp<SkPathEffect> Make(bool invert) {
             return sk_sp<SkPathEffect>(new EmptyPathEffect(invert));
@@ -1379,15 +1385,18 @@ void test_path_effect_makes_empty_shape(skiatest::Reporter* reporter, const Geo&
         const char* getTypeName() const override { return nullptr; }
     protected:
         bool onFilterPath(SkPath* dst, const SkPath& src, SkStrokeRec*,
-                          const SkRect* cullR) const override {
+                          const SkRect* cullR, const SkMatrix&) const override {
             dst->reset();
             if (fInvert) {
                 dst->toggleInverseFillType();
             }
             return true;
         }
-        SkRect onComputeFastBounds(const SkRect& src) const override {
-            return { 0, 0, 0, 0 };
+        bool computeFastBounds(SkRect* bounds) const override {
+            if (bounds) {
+                *bounds = { 0, 0, 0, 0 };
+            }
+            return true;
         }
     private:
         bool fInvert;
@@ -1458,17 +1467,19 @@ void test_path_effect_fails(skiatest::Reporter* reporter, const Geo& geo) {
     /**
      * This path effect always fails to apply.
      */
-    class FailurePathEffect : SkPathEffect {
+    class FailurePathEffect : SkPathEffectBase {
     public:
         static sk_sp<SkPathEffect> Make() { return sk_sp<SkPathEffect>(new FailurePathEffect); }
         Factory getFactory() const override { return nullptr; }
         const char* getTypeName() const override { return nullptr; }
     protected:
         bool onFilterPath(SkPath* dst, const SkPath& src, SkStrokeRec*,
-                          const SkRect* cullR) const override {
+                          const SkRect* cullR, const SkMatrix&) const override {
             return false;
         }
     private:
+        bool computeFastBounds(SkRect* bounds) const override { return false; }
+
         FailurePathEffect() {}
     };
 
@@ -1653,7 +1664,7 @@ void test_rrect(skiatest::Reporter* r, const SkRRect& rrect) {
     strokeRecs[kStrokeAndFill].setStrokeParams(SkPaint::kButt_Cap, SkPaint::kBevel_Join, 1.f);
     sk_sp<SkPathEffect> dashEffect = make_dash();
 
-    static constexpr Style kStyleCnt = static_cast<Style>(SK_ARRAY_COUNT(strokeRecs));
+    static constexpr size_t kStyleCnt = std::size(strokeRecs);
 
     auto index = [](bool inverted,
                     SkPathDirection dir,
@@ -1729,7 +1740,7 @@ void test_rrect(skiatest::Reporter* r, const SkRRect& rrect) {
     Key exampleInvHairlineCaseKey;
     make_key(&exampleInvHairlineCaseKey, exampleInvHairlineCase);
 
-    // These are dummy initializations to suppress warnings.
+    // These initializations suppress warnings.
     SkRRect queryRR = SkRRect::MakeEmpty();
     SkPathDirection queryDir = SkPathDirection::kCW;
     unsigned queryStart = ~0U;
@@ -1990,10 +2001,10 @@ DEF_TEST(GrStyledShape_lines, r) {
 
 DEF_TEST(GrStyledShape_stroked_lines, r) {
     static constexpr SkScalar kIntervals1[] = {1.f, 0.f};
-    auto dash1 = SkDashPathEffect::Make(kIntervals1, SK_ARRAY_COUNT(kIntervals1), 0.f);
+    auto dash1 = SkDashPathEffect::Make(kIntervals1, std::size(kIntervals1), 0.f);
     REPORTER_ASSERT(r, dash1);
     static constexpr SkScalar kIntervals2[] = {10.f, 0.f, 5.f, 0.f};
-    auto dash2 = SkDashPathEffect::Make(kIntervals2, SK_ARRAY_COUNT(kIntervals2), 10.f);
+    auto dash2 = SkDashPathEffect::Make(kIntervals2, std::size(kIntervals2), 10.f);
     REPORTER_ASSERT(r, dash2);
 
     sk_sp<SkPathEffect> pathEffects[] = {nullptr, std::move(dash1), std::move(dash2)};
@@ -2279,7 +2290,7 @@ DEF_TEST(GrStyledShape_arcs, reporter) {
     roundStrokeAndFill.setStrokeStyle(2.f, true);
 
     static constexpr SkScalar kIntervals[] = {1, 2};
-    auto dash = SkDashPathEffect::Make(kIntervals, SK_ARRAY_COUNT(kIntervals), 1.5f);
+    auto dash = SkDashPathEffect::Make(kIntervals, std::size(kIntervals), 1.5f);
 
     SkTArray<GrStyle> styles;
     styles.push_back(GrStyle::SimpleFill());

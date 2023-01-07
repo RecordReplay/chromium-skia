@@ -6,6 +6,7 @@
  */
 
 #include "include/core/SkCanvas.h"
+#include "include/core/SkCapabilities.h"
 #include "include/core/SkMallocPixelRef.h"
 #include "include/private/SkImageInfoPriv.h"
 #include "src/core/SkDevice.h"
@@ -24,8 +25,9 @@ public:
     sk_sp<SkImage> onNewImageSnapshot(const SkIRect* subset) override;
     void onWritePixels(const SkPixmap&, int x, int y) override;
     void onDraw(SkCanvas*, SkScalar, SkScalar, const SkSamplingOptions&, const SkPaint*) override;
-    void onCopyOnWrite(ContentChangeMode) override;
+    bool onCopyOnWrite(ContentChangeMode) override;
     void onRestoreBackingMutability() override;
+    sk_sp<const SkCapabilities> onCapabilities() override;
 
 private:
     SkBitmap    fBitmap;
@@ -124,17 +126,21 @@ void SkSurface_Raster::onRestoreBackingMutability() {
     }
 }
 
-void SkSurface_Raster::onCopyOnWrite(ContentChangeMode mode) {
+bool SkSurface_Raster::onCopyOnWrite(ContentChangeMode mode) {
     // are we sharing pixelrefs with the image?
     sk_sp<SkImage> cached(this->refCachedImage());
     SkASSERT(cached);
     if (SkBitmapImageGetPixelRef(cached.get()) == fBitmap.pixelRef()) {
         SkASSERT(fWeOwnThePixels);
         if (kDiscard_ContentChangeMode == mode) {
-            fBitmap.allocPixels();
+            if (!fBitmap.tryAllocPixels()) {
+                return false;
+            }
         } else {
             SkBitmap prev(fBitmap);
-            fBitmap.allocPixels();
+            if (!fBitmap.tryAllocPixels()) {
+                return false;
+            }
             SkASSERT(prev.info() == fBitmap.info());
             SkASSERT(prev.rowBytes() == fBitmap.rowBytes());
             memcpy(fBitmap.getPixels(), prev.getPixels(), fBitmap.computeByteSize());
@@ -146,6 +152,11 @@ void SkSurface_Raster::onCopyOnWrite(ContentChangeMode mode) {
         SkASSERT(this->getCachedCanvas());
         this->getCachedCanvas()->baseDevice()->replaceBitmapBackendForRasterSurface(fBitmap);
     }
+    return true;
+}
+
+sk_sp<const SkCapabilities> SkSurface_Raster::onCapabilities() {
+    return SkCapabilities::RasterBackend();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

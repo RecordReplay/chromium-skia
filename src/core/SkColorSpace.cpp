@@ -8,7 +8,7 @@
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkData.h"
 #include "include/private/SkTemplates.h"
-#include "include/third_party/skcms/skcms.h"
+#include "modules/skcms/skcms.h"
 #include "src/core/SkColorSpacePriv.h"
 #include "src/core/SkOpts.h"
 
@@ -245,9 +245,9 @@ enum NamedGamma {
 
 struct ColorSpaceHeader {
     // Flag values, only used by old (k0_Version) serialization
-    static constexpr uint8_t kMatrix_Flag     = 1 << 0;
-    static constexpr uint8_t kICC_Flag        = 1 << 1;
-    static constexpr uint8_t kTransferFn_Flag = 1 << 3;
+    inline static constexpr uint8_t kMatrix_Flag     = 1 << 0;
+    inline static constexpr uint8_t kICC_Flag        = 1 << 1;
+    inline static constexpr uint8_t kTransferFn_Flag = 1 << 3;
 
     uint8_t fVersion = kCurrent_Version;
 

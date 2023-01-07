@@ -12,13 +12,16 @@
 #include "include/core/SkTextBlob.h"
 #include "include/private/SkTo.h"
 #include "src/core/SkCanvasPriv.h"
-#include "src/core/SkClipOpPriv.h"
 #include "src/core/SkDrawShadowInfo.h"
 #include "src/core/SkMatrixPriv.h"
 #include "src/core/SkSamplingPriv.h"
 #include "src/core/SkTSearch.h"
 #include "src/image/SkImage_Base.h"
 #include "src/utils/SkPatchUtils.h"
+
+#if SK_SUPPORT_GPU
+#include "include/private/chromium/Slug.h"
+#endif
 
 #define HEAP_BLOCK_SIZE 4096
 
@@ -62,16 +65,6 @@ void SkPictureRecord::recordSave() {
     size_t initialOffset = this->addDraw(SAVE, &size);
 
     this->validate(initialOffset, size);
-}
-
-void SkPictureRecord::onMarkCTM(const char* name) {
-    size_t nameLen = SkWriter32::WriteStringSize(name);
-    size_t size = sizeof(kUInt32Size) + nameLen; // op + name
-    size_t initialOffset = this->addDraw(MARK_CTM, &size);
-    fWriter.writeString(name);
-    this->validate(initialOffset, size);
-
-    this->INHERITED::onMarkCTM(name);
 }
 
 SkCanvas::SaveLayerStrategy SkPictureRecord::getSaveLayerStrategy(const SaveLayerRec& rec) {
@@ -130,6 +123,10 @@ void SkPictureRecord::recordSaveLayer(const SaveLayerRec& rec) {
         flatFlags |= SAVELAYERREC_HAS_FLAGS;
         size += sizeof(uint32_t);
     }
+    if (SkCanvasPriv::GetBackdropScaleFactor(rec) != 1.f) {
+        flatFlags |= SAVELAYERREC_HAS_BACKDROP_SCALE;
+        size += sizeof(SkScalar);
+    }
 
     const size_t initialOffset = this->addDraw(SAVE_LAYER_SAVELAYERREC, &size);
     this->addInt(flatFlags);
@@ -147,6 +144,9 @@ void SkPictureRecord::recordSaveLayer(const SaveLayerRec& rec) {
     }
     if (flatFlags & SAVELAYERREC_HAS_FLAGS) {
         this->addInt(rec.fSaveLayerFlags);
+    }
+    if (flatFlags & SAVELAYERREC_HAS_BACKDROP_SCALE) {
+        this->addScalar(SkCanvasPriv::GetBackdropScaleFactor(rec));
     }
     this->validate(initialOffset, size);
 }
@@ -174,13 +174,13 @@ void SkPictureRecord::willRestore() {
 #endif
 
     // check for underflow
-    if (fRestoreOffsetStack.count() == 0) {
+    if (fRestoreOffsetStack.empty()) {
         return;
     }
 
     this->recordRestore();
 
-    fRestoreOffsetStack.pop();
+    fRestoreOffsetStack.pop_back();
 
     this->INHERITED::willRestore();
 }
@@ -254,24 +254,8 @@ void SkPictureRecord::recordConcat(const SkMatrix& matrix) {
     this->validate(initialOffset, size);
 }
 
-static bool clipOpExpands(SkClipOp op) {
-    switch (op) {
-        case kUnion_SkClipOp:
-        case kXOR_SkClipOp:
-        case kReverseDifference_SkClipOp:
-        case kReplace_SkClipOp:
-            return true;
-        case kIntersect_SkClipOp:
-        case kDifference_SkClipOp:
-            return false;
-        default:
-            SkDEBUGFAIL("unknown clipop");
-            return false;
-    }
-}
-
 void SkPictureRecord::fillRestoreOffsetPlaceholdersForCurrentStackLevel(uint32_t restoreOffset) {
-    int32_t offset = fRestoreOffsetStack.top();
+    int32_t offset = fRestoreOffsetStack.back();
     while (offset > 0) {
         uint32_t peek = fWriter.readTAt<uint32_t>(offset);
         fWriter.overwriteTAt(offset, restoreOffset);
@@ -301,8 +285,8 @@ void SkPictureRecord::endRecording() {
     this->restoreToCount(fInitialSaveCount);
 }
 
-size_t SkPictureRecord::recordRestoreOffsetPlaceholder(SkClipOp op) {
-    if (fRestoreOffsetStack.isEmpty()) {
+size_t SkPictureRecord::recordRestoreOffsetPlaceholder() {
+    if (fRestoreOffsetStack.empty()) {
         return -1;
     }
 
@@ -311,23 +295,11 @@ size_t SkPictureRecord::recordRestoreOffsetPlaceholder(SkClipOp op) {
     // in the current stack level, thus forming a linked list so that
     // the restore offsets can be filled in when the corresponding
     // restore command is recorded.
-    int32_t prevOffset = fRestoreOffsetStack.top();
-
-    if (clipOpExpands(op)) {
-        // Run back through any previous clip ops, and mark their offset to
-        // be 0, disabling their ability to trigger a jump-to-restore, otherwise
-        // they could hide this clips ability to expand the clip (i.e. go from
-        // empty to non-empty).
-        this->fillRestoreOffsetPlaceholdersForCurrentStackLevel(0);
-
-        // Reset the pointer back to the previous clip so that subsequent
-        // restores don't overwrite the offsets we just cleared.
-        prevOffset = 0;
-    }
+    int32_t prevOffset = fRestoreOffsetStack.back();
 
     size_t offset = fWriter.bytesWritten();
     this->addInt(prevOffset);
-    fRestoreOffsetStack.top() = SkToU32(offset);
+    fRestoreOffsetStack.back() = SkToU32(offset);
     return offset;
 }
 
@@ -340,14 +312,14 @@ size_t SkPictureRecord::recordClipRect(const SkRect& rect, SkClipOp op, bool doA
     // id + rect + clip params
     size_t size = 1 * kUInt32Size + sizeof(rect) + 1 * kUInt32Size;
     // recordRestoreOffsetPlaceholder doesn't always write an offset
-    if (!fRestoreOffsetStack.isEmpty()) {
+    if (!fRestoreOffsetStack.empty()) {
         // + restore offset
         size += kUInt32Size;
     }
     size_t initialOffset = this->addDraw(CLIP_RECT, &size);
     this->addRect(rect);
     this->addInt(ClipParams_pack(op, doAA));
-    size_t offset = this->recordRestoreOffsetPlaceholder(op);
+    size_t offset = this->recordRestoreOffsetPlaceholder();
 
     this->validate(initialOffset, size);
     return offset;
@@ -362,14 +334,14 @@ size_t SkPictureRecord::recordClipRRect(const SkRRect& rrect, SkClipOp op, bool 
     // op + rrect + clip params
     size_t size = 1 * kUInt32Size + SkRRect::kSizeInMemory + 1 * kUInt32Size;
     // recordRestoreOffsetPlaceholder doesn't always write an offset
-    if (!fRestoreOffsetStack.isEmpty()) {
+    if (!fRestoreOffsetStack.empty()) {
         // + restore offset
         size += kUInt32Size;
     }
     size_t initialOffset = this->addDraw(CLIP_RRECT, &size);
     this->addRRect(rrect);
     this->addInt(ClipParams_pack(op, doAA));
-    size_t offset = recordRestoreOffsetPlaceholder(op);
+    size_t offset = recordRestoreOffsetPlaceholder();
     this->validate(initialOffset, size);
     return offset;
 }
@@ -384,14 +356,14 @@ size_t SkPictureRecord::recordClipPath(int pathID, SkClipOp op, bool doAA) {
     // op + path index + clip params
     size_t size = 3 * kUInt32Size;
     // recordRestoreOffsetPlaceholder doesn't always write an offset
-    if (!fRestoreOffsetStack.isEmpty()) {
+    if (!fRestoreOffsetStack.empty()) {
         // + restore offset
         size += kUInt32Size;
     }
     size_t initialOffset = this->addDraw(CLIP_PATH, &size);
     this->addInt(pathID);
     this->addInt(ClipParams_pack(op, doAA));
-    size_t offset = recordRestoreOffsetPlaceholder(op);
+    size_t offset = recordRestoreOffsetPlaceholder();
     this->validate(initialOffset, size);
     return offset;
 }
@@ -421,17 +393,30 @@ size_t SkPictureRecord::recordClipRegion(const SkRegion& region, SkClipOp op) {
     // op + clip params + region
     size_t size = 2 * kUInt32Size + region.writeToMemory(nullptr);
     // recordRestoreOffsetPlaceholder doesn't always write an offset
-    if (!fRestoreOffsetStack.isEmpty()) {
+    if (!fRestoreOffsetStack.empty()) {
         // + restore offset
         size += kUInt32Size;
     }
     size_t initialOffset = this->addDraw(CLIP_REGION, &size);
     this->addRegion(region);
     this->addInt(ClipParams_pack(op, false));
-    size_t offset = this->recordRestoreOffsetPlaceholder(op);
+    size_t offset = this->recordRestoreOffsetPlaceholder();
 
     this->validate(initialOffset, size);
     return offset;
+}
+
+void SkPictureRecord::onResetClip() {
+    if (!fRestoreOffsetStack.empty()) {
+        // Run back through any previous clip ops, and mark their offset to
+        // be 0, disabling their ability to trigger a jump-to-restore, otherwise
+        // they could hide this expansion of the clip.
+        this->fillRestoreOffsetPlaceholdersForCurrentStackLevel(0);
+    }
+    size_t size = sizeof(kUInt32Size);
+    size_t initialOffset = this->addDraw(RESET_CLIP, &size);
+    this->validate(initialOffset, size);
+    this->INHERITED::onResetClip();
 }
 
 void SkPictureRecord::onDrawPaint(const SkPaint& paint) {
@@ -538,7 +523,7 @@ void SkPictureRecord::onDrawPath(const SkPath& path, const SkPaint& paint) {
 void SkPictureRecord::onDrawImage2(const SkImage* image, SkScalar x, SkScalar y,
                                    const SkSamplingOptions& sampling, const SkPaint* paint) {
     // op + paint_index + image_index + x + y
-    size_t size = 3 * kUInt32Size + 2 * sizeof(SkScalar) + SkSamplingPriv::kFlatSize;
+    size_t size = 3 * kUInt32Size + 2 * sizeof(SkScalar) + SkSamplingPriv::FlatSize(sampling);
     size_t initialOffset = this->addDraw(DRAW_IMAGE2, &size);
     this->addPaintPtr(paint);
     this->addImage(image);
@@ -552,7 +537,8 @@ void SkPictureRecord::onDrawImageRect2(const SkImage* image, const SkRect& src, 
                                        const SkSamplingOptions& sampling, const SkPaint* paint,
                                        SrcRectConstraint constraint) {
     // id + paint_index + image_index + constraint
-    size_t size = 3 * kUInt32Size + 2 * sizeof(dst) + SkSamplingPriv::kFlatSize + kUInt32Size;
+    size_t size = 3 * kUInt32Size + 2 * sizeof(dst) + SkSamplingPriv::FlatSize(sampling) +
+                  kUInt32Size;
 
     size_t initialOffset = this->addDraw(DRAW_IMAGE_RECT2, &size);
     this->addPaintPtr(paint);
@@ -593,6 +579,17 @@ void SkPictureRecord::onDrawTextBlob(const SkTextBlob* blob, SkScalar x, SkScala
 
     this->validate(initialOffset, size);
 }
+
+#if SK_SUPPORT_GPU
+void SkPictureRecord::onDrawSlug(const sktext::gpu::Slug* slug) {
+    // op + slug id
+    size_t size = 2 * kUInt32Size;
+    size_t initialOffset = this->addDraw(DRAW_SLUG, &size);
+
+    this->addSlug(slug);
+    this->validate(initialOffset, size);
+}
+#endif
 
 void SkPictureRecord::onDrawPicture(const SkPicture* picture, const SkMatrix* matrix,
                                     const SkPaint* paint) {
@@ -688,7 +685,7 @@ void SkPictureRecord::onDrawAtlas2(const SkImage* atlas, const SkRSXform xform[]
                                    const SkPaint* paint) {
     // [op + paint-index + atlas-index + flags + count] + [xform] + [tex] + [*colors + mode] + cull
     size_t size = 5 * kUInt32Size + count * sizeof(SkRSXform) + count * sizeof(SkRect);
-    size += SkSamplingPriv::kFlatSize;
+    size += SkSamplingPriv::FlatSize(sampling);
     uint32_t flags = 0;
     if (colors) {
         flags |= DRAW_ATLAS_HAS_COLORS;
@@ -784,7 +781,7 @@ void SkPictureRecord::onDrawEdgeAAImageSet2(const SkCanvas::ImageSetEntry set[],
     size_t size = 6 * kUInt32Size + sizeof(SkPoint) * totalDstClipCount +
                   kMatrixSize * totalMatrixCount +
                   (4 * kUInt32Size + 2 * sizeof(SkRect) + sizeof(SkScalar)) * count +
-                  SkSamplingPriv::kFlatSize;
+                  SkSamplingPriv::FlatSize(sampling);
     size_t initialOffset = this->addDraw(DRAW_EDGEAA_IMAGE_SET2, &size);
     this->addInt(count);
     this->addPaintPtr(paint);
@@ -925,14 +922,7 @@ void SkPictureRecord::addRegion(const SkRegion& region) {
 }
 
 void SkPictureRecord::addSampling(const SkSamplingOptions& sampling) {
-    fWriter.writeBool(sampling.useCubic);
-    if (sampling.useCubic) {
-        fWriter.writeScalar(sampling.cubic.B);
-        fWriter.writeScalar(sampling.cubic.C);
-    } else {
-        fWriter.writeInt(static_cast<uint32_t>(sampling.filter));
-        fWriter.writeInt(static_cast<uint32_t>(sampling.mipmap));
-    }
+    fWriter.writeSampling(sampling);
 }
 
 void SkPictureRecord::addText(const void* text, size_t byteLength) {
@@ -944,6 +934,13 @@ void SkPictureRecord::addTextBlob(const SkTextBlob* blob) {
     // follow the convention of recording a 1-based index
     this->addInt(find_or_append(fTextBlobs, blob) + 1);
 }
+
+#if SK_SUPPORT_GPU
+void SkPictureRecord::addSlug(const sktext::gpu::Slug* slug) {
+    // follow the convention of recording a 1-based index
+    this->addInt(find_or_append(fSlugs, slug) + 1);
+}
+#endif
 
 void SkPictureRecord::addVertices(const SkVertices* vertices) {
     // follow the convention of recording a 1-based index

@@ -46,6 +46,7 @@ static constexpr char g_type_message[] = "How to interpret --bytes, one of:\n"
                                          "animated_image_decode\n"
                                          "api\n"
                                          "color_deserialize\n"
+                                         "colrv1\n"
                                          "filter_fuzz (equivalent to Chrome's filter_fuzz_stub)\n"
                                          "image_decode\n"
                                          "image_decode_incremental\n"
@@ -56,6 +57,7 @@ static constexpr char g_type_message[] = "How to interpret --bytes, one of:\n"
                                          "region_deserialize\n"
                                          "region_set_path\n"
                                          "skdescriptor_deserialize\n"
+                                         "skmeshspecialization\n"
                                          "skp\n"
                                          "skruntimeeffect\n"
                                          "sksl2glsl\n"
@@ -78,6 +80,7 @@ static void fuzz_android_codec(sk_sp<SkData>);
 static void fuzz_animated_img(sk_sp<SkData>);
 static void fuzz_api(sk_sp<SkData> bytes, SkString name);
 static void fuzz_color_deserialize(sk_sp<SkData>);
+static void fuzz_colrv1(sk_sp<SkData>);
 static void fuzz_filter_fuzz(sk_sp<SkData>);
 static void fuzz_image_decode(sk_sp<SkData>);
 static void fuzz_image_decode_incremental(sk_sp<SkData>);
@@ -87,16 +90,20 @@ static void fuzz_path_deserialize(sk_sp<SkData>);
 static void fuzz_region_deserialize(sk_sp<SkData>);
 static void fuzz_region_set_path(sk_sp<SkData>);
 static void fuzz_skdescriptor_deserialize(sk_sp<SkData>);
+static void fuzz_skmeshspecification(sk_sp<SkData>);
 static void fuzz_skp(sk_sp<SkData>);
 static void fuzz_skruntimeeffect(sk_sp<SkData>);
 static void fuzz_sksl2glsl(sk_sp<SkData>);
 static void fuzz_sksl2metal(sk_sp<SkData>);
 static void fuzz_sksl2pipeline(sk_sp<SkData>);
 static void fuzz_sksl2spirv(sk_sp<SkData>);
-static void fuzz_svg_dom(sk_sp<SkData>);
 static void fuzz_textblob_deserialize(sk_sp<SkData>);
 
 static void print_api_names();
+
+#if defined(SK_ENABLE_SVG)
+static void fuzz_svg_dom(sk_sp<SkData>);
+#endif
 
 #if defined(SK_ENABLE_SKOTTIE)
 static void fuzz_skottie_json(sk_sp<SkData>);
@@ -173,6 +180,10 @@ static int fuzz_file(SkString path, SkString type) {
         fuzz_color_deserialize(bytes);
         return 0;
     }
+    if (type.equals("colrv1")) {
+      fuzz_colrv1(bytes);
+      return 0;
+    }
     if (type.equals("filter_fuzz")) {
         fuzz_filter_fuzz(bytes);
         return 0;
@@ -225,6 +236,10 @@ static int fuzz_file(SkString path, SkString type) {
         return 0;
     }
 #endif
+    if (type.equals("skmeshspecification")) {
+        fuzz_skmeshspecification(bytes);
+        return 0;
+    }
     if (type.equals("skp")) {
         fuzz_skp(bytes);
         return 0;
@@ -249,10 +264,12 @@ static int fuzz_file(SkString path, SkString type) {
         fuzz_sksl2pipeline(bytes);
         return 0;
     }
+#if defined(SK_ENABLE_SVG)
     if (type.equals("svg_dom")) {
         fuzz_svg_dom(bytes);
         return 0;
     }
+#endif
     if (type.equals("textblob")) {
         fuzz_textblob_deserialize(bytes);
         return 0;
@@ -295,6 +312,7 @@ static std::map<std::string, std::string> cf_map = {
     {"region_set_path", "region_set_path"},
     {"skdescriptor_deserialize", "skdescriptor_deserialize"},
     {"skjson", "json"},
+    {"skmeshspecification", "skmeshspecification"},
     {"skp", "skp"},
     {"skruntimeeffect", "skruntimeeffect"},
     {"sksl2glsl", "sksl2glsl"},
@@ -304,7 +322,9 @@ static std::map<std::string, std::string> cf_map = {
 #if defined(SK_ENABLE_SKOTTIE)
     {"skottie_json", "skottie_json"},
 #endif
+#if defined(SK_ENABLE_SVG)
     {"svg_dom", "svg_dom"},
+#endif
     {"textblob_deserialize", "textblob"}
 };
 
@@ -355,10 +375,20 @@ static void fuzz_skottie_json(sk_sp<SkData> bytes){
 }
 #endif
 
+#if defined(SK_ENABLE_SVG)
 void FuzzSVG(sk_sp<SkData> bytes);
+
 static void fuzz_svg_dom(sk_sp<SkData> bytes){
     FuzzSVG(bytes);
     SkDebugf("[terminated] Done DOM!\n");
+}
+#endif
+
+void FuzzCOLRv1(sk_sp<SkData> bytes);
+
+static void fuzz_colrv1(sk_sp<SkData> bytes) {
+    FuzzCOLRv1(bytes);
+    SkDebugf("[terminated] Done COLRv1!\n");
 }
 
 // This adds up the first 1024 bytes and returns it as an 8 bit integer.  This allows afl-fuzz to
@@ -592,12 +622,7 @@ static void fuzz_img(sk_sp<SkData> bytes, uint8_t scale, uint8_t mode) {
             SkBitmap subsetBm;
             // We will reuse pixel memory from bitmap.
             void* pixels = bitmap.getPixels();
-            // Keep track of left and top (for drawing subsetBm into canvas). We could use
-            // fscale * x and fscale * y, but we want integers such that the next subset will start
-            // where the last one ended. So we'll add decodeInfo.width() and height().
-            int left = 0;
             for (int x = 0; x < W; x += w) {
-                int top = 0;
                 for (int y = 0; y < H; y+= h) {
                     // Do not make the subset go off the edge of the image.
                     const int preScaleW = std::min(w, W - x);
@@ -645,11 +670,7 @@ static void fuzz_img(sk_sp<SkData> bytes, uint8_t scale, uint8_t mode) {
                                                   W, H, result);
                             return;
                     }
-                    // translate by the scaled height.
-                    top += decodeInfo.height();
                 }
-                // translate by the scaled width.
-                left += decodeInfo.width();
             }
             SkDebugf("[terminated] Success!\n");
             break;
@@ -667,7 +688,7 @@ static void fuzz_img(sk_sp<SkData> bytes, uint8_t scale, uint8_t mode) {
                         bitmap.rowBytes(), &options);
                 if (SkCodec::kSuccess != result) {
                     SkDebugf("[terminated] failed to start incremental decode "
-                             "in frame %d with error %d\n", i, result);
+                             "in frame %zu with error %d\n", i, result);
                     return;
                 }
 
@@ -678,7 +699,7 @@ static void fuzz_img(sk_sp<SkData> bytes, uint8_t scale, uint8_t mode) {
                     break;
                 }
                 if (result == SkCodec::kSuccess) {
-                    SkDebugf("okay - decoded frame %d\n", i);
+                    SkDebugf("okay - decoded frame %zu\n", i);
                 } else {
                     SkDebugf("[terminated] incremental decode failed with "
                              "error %d\n", result);
@@ -749,6 +770,13 @@ void FuzzImageFilterDeserialize(sk_sp<SkData> bytes);
 static void fuzz_filter_fuzz(sk_sp<SkData> bytes) {
     FuzzImageFilterDeserialize(bytes);
     SkDebugf("[terminated] filter_fuzz didn't crash!\n");
+}
+
+bool FuzzSkMeshSpecification(sk_sp<SkData> bytes);
+
+static void fuzz_skmeshspecification(sk_sp<SkData> bytes) {
+    FuzzSkMeshSpecification(bytes);
+    SkDebugf("[terminated] SkMeshSpecification::Make didn't crash!\n");
 }
 
 bool FuzzSkRuntimeEffect(sk_sp<SkData> bytes);

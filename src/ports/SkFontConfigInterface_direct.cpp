@@ -23,10 +23,6 @@
 #include <fontconfig/fontconfig.h>
 #include <unistd.h>
 
-namespace gfx {
-  extern void FontDiagnostic(const char* format, ...);
-}
-
 namespace {
 
 // FontConfig was thread antagonistic until 2.10.91 with known thread safety issues until 2.13.93.
@@ -38,7 +34,7 @@ static SkMutex& f_c_mutex() {
 }
 
 struct FCLocker {
-    static constexpr int FontConfigThreadSafeVersion = 21393;
+    inline static constexpr int FontConfigThreadSafeVersion = 21393;
 
     // Assume FcGetVersion() has always been thread safe.
     FCLocker() {
@@ -415,7 +411,7 @@ static SkFontStyle skfontstyle_from_fcpattern(FcPattern* pattern) {
         { FC_WEIGHT_EXTRABLACK, SkFS::kExtraBlack_Weight },
     };
     SkScalar weight = map_ranges(get_int(pattern, FC_WEIGHT, FC_WEIGHT_REGULAR),
-                                 weightRanges, SK_ARRAY_COUNT(weightRanges));
+                                 weightRanges, std::size(weightRanges));
 
     static constexpr MapRanges widthRanges[] = {
         { FC_WIDTH_ULTRACONDENSED, SkFS::kUltraCondensed_Width },
@@ -429,7 +425,7 @@ static SkFontStyle skfontstyle_from_fcpattern(FcPattern* pattern) {
         { FC_WIDTH_ULTRAEXPANDED,  SkFS::kUltraExpanded_Width },
     };
     SkScalar width = map_ranges(get_int(pattern, FC_WIDTH, FC_WIDTH_NORMAL),
-                                widthRanges, SK_ARRAY_COUNT(widthRanges));
+                                widthRanges, std::size(widthRanges));
 
     SkFS::Slant slant = SkFS::kUpright_Slant;
     switch (get_int(pattern, FC_SLANT, FC_SLANT_ROMAN)) {
@@ -459,7 +455,7 @@ static void fcpattern_from_skfontstyle(SkFontStyle style, FcPattern* pattern) {
         { SkFS::kBlack_Weight,      FC_WEIGHT_BLACK },
         { SkFS::kExtraBlack_Weight, FC_WEIGHT_EXTRABLACK },
     };
-    int weight = map_ranges(style.weight(), weightRanges, SK_ARRAY_COUNT(weightRanges));
+    int weight = map_ranges(style.weight(), weightRanges, std::size(weightRanges));
 
     static constexpr MapRanges widthRanges[] = {
         { SkFS::kUltraCondensed_Width, FC_WIDTH_ULTRACONDENSED },
@@ -472,7 +468,7 @@ static void fcpattern_from_skfontstyle(SkFontStyle style, FcPattern* pattern) {
         { SkFS::kExtraExpanded_Width,  FC_WIDTH_EXTRAEXPANDED },
         { SkFS::kUltraExpanded_Width,  FC_WIDTH_ULTRAEXPANDED },
     };
-    int width = map_ranges(style.width(), widthRanges, SK_ARRAY_COUNT(widthRanges));
+    int width = map_ranges(style.width(), widthRanges, std::size(widthRanges));
 
     int slant = FC_SLANT_ROMAN;
     switch (style.slant()) {
@@ -497,57 +493,54 @@ const char* kFontFormatTrueType = "TrueType";
 const char* kFontFormatCFF = "CFF";
 #endif
 
-SkFontConfigInterfaceDirect::SkFontConfigInterfaceDirect() {
+SkFontConfigInterfaceDirect::SkFontConfigInterfaceDirect(FcConfig* fc) : fFC(fc)
+{
     SkDEBUGCODE(fontconfiginterface_unittest();)
 }
 
 SkFontConfigInterfaceDirect::~SkFontConfigInterfaceDirect() {
+    if (fFC) {
+        FcConfigDestroy(fFC);
+    }
 }
 
 bool SkFontConfigInterfaceDirect::isAccessible(const char* filename) {
     if (access(filename, R_OK) != 0) {
-        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isAccessible failed %s %s", filename, strerror(errno));
         return false;
     }
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isAccessible passed %s", filename);
     return true;
 }
 
 bool SkFontConfigInterfaceDirect::isValidPattern(FcPattern* pattern) {
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern Start");
-
 #ifdef SK_FONT_CONFIG_INTERFACE_ONLY_ALLOW_SFNT_FONTS
     const char* font_format = get_string(pattern, FC_FONTFORMAT);
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern font_format %s",
-                        font_format ? font_format : "<null>");
     if (font_format
         && 0 != strcmp(font_format, kFontFormatTrueType)
         && 0 != strcmp(font_format, kFontFormatCFF))
     {
-        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern #1");
         return false;
     }
 #endif
 
     // fontconfig can also return fonts which are unreadable
     const char* c_filename = get_string(pattern, FC_FILE);
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern c_filename %s",
-                        c_filename ? c_filename : "<null>");
     if (!c_filename) {
-        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern #2");
         return false;
     }
-    UniqueFCConfig fcConfig(FcConfigReference(nullptr));
-    const char* sysroot = (const char*)FcConfigGetSysRoot(fcConfig.get());
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern sysroot %s",
-                        sysroot ? sysroot : "<null>");
+
+    FcConfig* fc = fFC;
+    UniqueFCConfig fcStorage;
+    if (!fc) {
+        fcStorage.reset(FcConfigReference(nullptr));
+        fc = fcStorage.get();
+    }
+
+    const char* sysroot = (const char*)FcConfigGetSysRoot(fc);
     SkString resolvedFilename;
     if (sysroot) {
         resolvedFilename = sysroot;
         resolvedFilename += c_filename;
         c_filename = resolvedFilename.c_str();
-        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::isValidPattern resolved_filename %s",
-                            c_filename);
     }
     return this->isAccessible(c_filename);
 }
@@ -556,29 +549,21 @@ bool SkFontConfigInterfaceDirect::isValidPattern(FcPattern* pattern) {
 FcPattern* SkFontConfigInterfaceDirect::MatchFont(FcFontSet* font_set,
                                                   const char* post_config_family,
                                                   const SkString& family) {
-  gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont Start %d",
-                      font_set->nfont);
-
   // Older versions of fontconfig have a bug where they cannot select
   // only scalable fonts so we have to manually filter the results.
   FcPattern* match = nullptr;
   for (int i = 0; i < font_set->nfont; ++i) {
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont #0 %d", i);
     FcPattern* current = font_set->fonts[i];
     if (this->isValidPattern(current)) {
-      gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont #1");
       match = current;
       break;
     }
   }
 
   if (match && !IsFallbackFontAllowed(family)) {
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont #2");
-
     bool acceptable_substitute = false;
     for (int id = 0; id < 255; ++id) {
       const char* post_match_family = get_string(match, FC_FAMILY, id);
-      gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont #3 %d", !!post_match_family);
       if (!post_match_family)
         break;
       acceptable_substitute =
@@ -590,17 +575,14 @@ FcPattern* SkFontConfigInterfaceDirect::MatchFont(FcFontSet* font_set,
            // -> We should treat this case as a good match.
            strcasecmp(family.c_str(), post_match_family) == 0) ||
            IsMetricCompatibleReplacement(family.c_str(), post_match_family);
-      gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont #4 %d", !!acceptable_substitute);
       if (acceptable_substitute)
         break;
     }
     if (!acceptable_substitute) {
-      gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont #5");
       return nullptr;
     }
   }
 
-  gfx::FontDiagnostic("SkFontConfigInterfaceDirect::MatchFont Done %d", !!match);
   return match;
 }
 
@@ -609,16 +591,19 @@ bool SkFontConfigInterfaceDirect::matchFamilyName(const char familyName[],
                                                   FontIdentity* outIdentity,
                                                   SkString* outFamilyName,
                                                   SkFontStyle* outStyle) {
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::matchFamilyName Start %s", familyName);
-
     SkString familyStr(familyName ? familyName : "");
     if (familyStr.size() > kMaxFontFamilyLength) {
-        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::matchFamilyName #1");
         return false;
     }
 
+    FcConfig* fc = fFC;
+    UniqueFCConfig fcStorage;
+    if (!fc) {
+        fcStorage.reset(FcConfigReference(nullptr));
+        fc = fcStorage.get();
+    }
+
     FCLocker lock;
-    UniqueFCConfig fcConfig(FcConfigReference(nullptr));
     FcPattern* pattern = FcPatternCreate();
 
     if (familyName) {
@@ -628,7 +613,7 @@ bool SkFontConfigInterfaceDirect::matchFamilyName(const char familyName[],
 
     FcPatternAddBool(pattern, FC_SCALABLE, FcTrue);
 
-    FcConfigSubstitute(fcConfig.get(), pattern, FcMatchPattern);
+    FcConfigSubstitute(fc, pattern, FcMatchPattern);
     FcDefaultSubstitute(pattern);
 
     // Font matching:
@@ -667,16 +652,14 @@ bool SkFontConfigInterfaceDirect::matchFamilyName(const char familyName[],
     }
 
     FcResult result;
-    FcFontSet* font_set = FcFontSort(fcConfig.get(), pattern, 0, nullptr, &result);
+    FcFontSet* font_set = FcFontSort(fc, pattern, 0, nullptr, &result);
     if (!font_set) {
-        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::matchFamilyName #2");
         FcPatternDestroy(pattern);
         return false;
     }
 
     FcPattern* match = this->MatchFont(font_set, post_config_family, familyStr);
     if (!match) {
-        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::matchFamilyName #3");
         FcPatternDestroy(pattern);
         FcFontSetDestroy(font_set);
         return false;
@@ -688,18 +671,16 @@ bool SkFontConfigInterfaceDirect::matchFamilyName(const char familyName[],
 
     post_config_family = get_string(match, FC_FAMILY);
     if (!post_config_family) {
-        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::matchFamilyName #4");
         FcFontSetDestroy(font_set);
         return false;
     }
 
     const char* c_filename = get_string(match, FC_FILE);
     if (!c_filename) {
-        gfx::FontDiagnostic("SkFontConfigInterfaceDirect::matchFamilyName #5");
         FcFontSetDestroy(font_set);
         return false;
     }
-    const char* sysroot = (const char*)FcConfigGetSysRoot(fcConfig.get());
+    const char* sysroot = (const char*)FcConfigGetSysRoot(fc);
     SkString resolvedFilename;
     if (sysroot) {
         resolvedFilename = sysroot;
@@ -721,7 +702,6 @@ bool SkFontConfigInterfaceDirect::matchFamilyName(const char familyName[],
     if (outStyle) {
         *outStyle = skfontstyle_from_fcpattern(match);
     }
-    gfx::FontDiagnostic("SkFontConfigInterfaceDirect::matchFamilyName Done");
     return true;
 }
 

@@ -9,6 +9,7 @@
 #define SkM44_DEFINED
 
 #include "include/core/SkMatrix.h"
+#include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
 
 struct SK_API SkV2 {
@@ -29,6 +30,7 @@ struct SK_API SkV2 {
     friend SkV2 operator*(SkV2 v, SkScalar s) { return {v.x*s, v.y*s}; }
     friend SkV2 operator*(SkScalar s, SkV2 v) { return {v.x*s, v.y*s}; }
     friend SkV2 operator/(SkV2 v, SkScalar s) { return {v.x/s, v.y/s}; }
+    friend SkV2 operator/(SkScalar s, SkV2 v) { return {s/v.x, s/v.y}; }
 
     void operator+=(SkV2 v) { *this = *this + v; }
     void operator-=(SkV2 v) { *this = *this - v; }
@@ -225,6 +227,9 @@ public:
         return m;
     }
 
+    // Scales and translates 'src' to fill 'dst' exactly.
+    static SkM44 RectToRect(const SkRect& src, const SkRect& dst);
+
     static SkM44 LookAt(const SkV3& eye, const SkV3& center, const SkV3& up);
     static SkM44 Perspective(float near, float far, float angle);
 
@@ -376,7 +381,6 @@ public:
         auto v4 = this->map(v.x, v.y, v.z, 0);
         return {v4.x, v4.y, v4.z};
     }
-
     ////////////////////// Converting to/from SkMatrix
 
     /* When converting from SkM44 to SkMatrix, the third row and
@@ -404,6 +408,7 @@ public:
     SkM44& postTranslate(SkScalar x, SkScalar y, SkScalar z = 0);
 
     SkM44& preScale(SkScalar x, SkScalar y);
+    SkM44& preScale(SkScalar x, SkScalar y, SkScalar z);
     SkM44& preConcat(const SkMatrix&);
 
 private:

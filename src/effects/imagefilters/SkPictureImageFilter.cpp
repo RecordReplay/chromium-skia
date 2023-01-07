@@ -6,15 +6,25 @@
  */
 
 #include "include/core/SkCanvas.h"
+#include "include/core/SkFlattenable.h"
+#include "include/core/SkImageFilter.h"
+#include "include/core/SkMatrix.h"
 #include "include/core/SkPicture.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkSurfaceProps.h"
+#include "include/core/SkTypes.h"
 #include "include/effects/SkImageFilters.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkPicturePriv.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkSpecialImage.h"
 #include "src/core/SkSpecialSurface.h"
-#include "src/core/SkValidationUtils.h"
 #include "src/core/SkWriteBuffer.h"
+
+#include <utility>
 
 namespace {
 
@@ -100,8 +110,9 @@ sk_sp<SkSpecialImage> SkPictureImageFilter::onFilterImage(const Context& ctx,
     SkASSERT(!bounds.isEmpty());
 
     // Given the standard usage of the picture image filter (i.e., to render content at a fixed
-    // resolution that, most likely, differs from the screen's) disable LCD text.
-    SkSurfaceProps props(0, kUnknown_SkPixelGeometry);
+    // resolution that, most likely, differs from the screen's) disable LCD text by removing any
+    // knowledge of the pixel geometry.
+    SkSurfaceProps props = ctx.surfaceProps().cloneWithPixelGeometry(kUnknown_SkPixelGeometry);
     sk_sp<SkSpecialSurface> surf(ctx.makeSurface(bounds.size(), &props));
     if (!surf) {
         return nullptr;
