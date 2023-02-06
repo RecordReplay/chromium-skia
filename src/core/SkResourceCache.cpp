@@ -119,7 +119,9 @@ SkResourceCache::~SkResourceCache() {
 bool SkResourceCache::find(const Key& key, FindVisitor visitor, void* context) {
     this->checkMessages();
 
-    if (auto found = fHash->find(key)) {
+    auto found = fHash->find(key);
+    SkRecordReplayAssert("[RUN-593] SkResourceCache::find %d", found);
+    if (found) {
         Rec* rec = *found;
         if (visitor(*rec, context)) {
             this->moveToHead(rec);  // for our LRU
@@ -166,6 +168,10 @@ void SkResourceCache::add(Rec* rec, void* payload) {
     fHash->set(rec);
     rec->postAddInstall(payload);
 
+    // https://linear.app/replay/issue/RUN-593
+    SkRecordReplayAssert(
+        "[RUN-593] SkResourceCache::add %llu %s", rec->bytesUsed(), rec->getCategory());
+
     if (gDumpCacheTransactions) {
         SkString bytesStr, totalStr;
         make_size_str(rec->bytesUsed(), &bytesStr);
@@ -182,6 +188,10 @@ void SkResourceCache::remove(Rec* rec) {
     SkASSERT(rec->canBePurged());
     size_t used = rec->bytesUsed();
     SkASSERT(used <= fTotalBytesUsed);
+
+    // https://linear.app/replay/issue/RUN-593
+    SkRecordReplayAssert(
+            "[RUN-593] SkResourceCache::remove %d %s", rec->bytesUsed(), rec->getCategory());
 
     this->release(rec);
     fHash->remove(rec->getKey());
@@ -529,14 +539,11 @@ void SkResourceCache::CheckMessages() {
 }
 
 bool SkResourceCache::Find(const Key& key, FindVisitor visitor, void* context) {
-    // https://linear.app/replay/issue/RUN-593
-    SkRecordReplayAssert("SkResourceCache::Find");
-
     SkAutoMutexExclusive am(resource_cache_mutex());
     bool rv = get_cache()->find(key, visitor, context);
 
     // https://linear.app/replay/issue/RUN-593
-    SkRecordReplayAssert("SkResourceCache::Find Done %d", rv);
+    SkRecordReplayAssert("[RUN-593] SkResourceCache::Find Done %d", rv);
     return rv;
 }
 
