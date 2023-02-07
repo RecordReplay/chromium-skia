@@ -120,7 +120,7 @@ bool SkResourceCache::find(const Key& key, FindVisitor visitor, void* context) {
     this->checkMessages();
 
     auto found = fHash->find(key);
-    SkRecordReplayAssert("[RUN-593] SkResourceCache::find %d", found);
+    SkRecordReplayAssert("[RUN-593] SkResourceCache::find %d", !!found);
     if (found) {
         Rec* rec = *found;
         if (visitor(*rec, context)) {
