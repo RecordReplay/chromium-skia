@@ -75,6 +75,7 @@ void SkCachedData::internalUnref(bool fromCache) const {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 void SkCachedData::inMutexRef(bool fromCache) {
+    SkRecordReplayAssert("[RUN-593-1374] SkCachedData::inMutexRef %d %d %d", fRefCnt, fInCache, fromCache);
     if ((1 == fRefCnt) && fInCache) {
         this->inMutexLock();
     }
@@ -120,6 +121,8 @@ void SkCachedData::inMutexLock() {
 
     SkASSERT(!fIsLocked);
     fIsLocked = true;
+
+    SkRecordReplayAssert("[RUN-593-1374] SkCachedData::inMutexLock %d", (int)fStorageType);
 
     switch (fStorageType) {
         case kMalloc_StorageType:
