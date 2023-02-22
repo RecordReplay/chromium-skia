@@ -7,7 +7,12 @@
 
 #include "SkRecordReplay.h"
 
+#ifndef _WIN32
 #include <dlfcn.h>
+#else
+#include <windows.h>
+#endif
+
 #include <stdarg.h>
 #include <string.h>
 
@@ -28,7 +33,12 @@ static inline void CastPointer(const Src src, Dst* dst) {
 
 template <typename T>
 static void RecordReplayLoadSymbol(const char* name, T& function) {
+#ifndef _WIN32
   void* sym = dlsym(RTLD_DEFAULT, name);
+#else
+  HMODULE module = GetModuleHandleA("windows-recordreplay.dll");
+  void* sym = module ? (void*)GetProcAddress(module, name) : nullptr;
+#endif
   if (sym) {
     CastPointer(sym, &function);
   }

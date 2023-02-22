@@ -18,7 +18,15 @@
 
 namespace SkSL {
 
-//static thread_local MemoryPool* sMemPool = nullptr;
+#ifdef SK_BUILD_FOR_WIN
+
+static thread_local MemoryPool* sMemPool = nullptr;
+
+static MemoryPool*& memory_pool_location() {
+  return sMemPool;
+}
+
+#else // !SK_BUILD_FOR_WIN
 
 static MemoryPool*& memory_pool_location() {
   static pthread_key_t key;
@@ -35,6 +43,8 @@ static MemoryPool*& memory_pool_location() {
   }
   return *v;
 }
+
+#endif // !SK_BUILD_FOR_WIN
 
 static MemoryPool* get_thread_local_memory_pool() {
     return memory_pool_location();
