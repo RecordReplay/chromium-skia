@@ -8,48 +8,51 @@
 #include "include/private/SkSemaphore.h"
 #include "src/core/SkLeanWindows.h"
 
+#ifndef _WIN32
 #include <dlfcn.h>
+#else
+#include <windows.h>
+#endif
 
-static int (*gRecordReplayCreateOrderedLockFn)(const char*);
+static void* LookupRecordReplaySymbol(const char* name) {
+#ifndef _WIN32
+  void* fnptr = dlsym(RTLD_DEFAULT, name);
+#else
+  HMODULE module = GetModuleHandleA("windows-recordreplay.dll");
+  void* fnptr = module ? (void*)GetProcAddress(module, name) : nullptr;
+#endif
+  return fnptr ? fnptr : reinterpret_cast<void*>(1);
+}
 
 int SkRecordReplayCreateOrderedLock(const char* ordered_name) {
-  if (!gRecordReplayCreateOrderedLockFn) {
-    void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayCreateOrderedLock");
-    if (!fnptr) {
-      return 0;
-    }
-    gRecordReplayCreateOrderedLockFn = reinterpret_cast<int(*)(const char*)>(fnptr);
+  static void* fnptr;
+  if (!fnptr) {
+    fnptr = LookupRecordReplaySymbol("RecordReplayCreateOrderedLock");
   }
-
-  return gRecordReplayCreateOrderedLockFn(ordered_name);
+  if (fnptr != reinterpret_cast<void*>(1)) {
+    return reinterpret_cast<int(*)(const char*)>(fnptr)(ordered_name);
+  }
+  return 0;
 }
-
-static void (*gRecordReplayOrderedLockFn)(int);
 
 void SkRecordReplayOrderedLock(int lock) {
-  if (!gRecordReplayOrderedLockFn) {
-    void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayOrderedLock");
-    if (!fnptr) {
-      return;
-    }
-    gRecordReplayOrderedLockFn = reinterpret_cast<void(*)(int)>(fnptr);
+  static void* fnptr;
+  if (!fnptr) {
+    fnptr = LookupRecordReplaySymbol("RecordReplayOrderedLock");
   }
-
-  gRecordReplayOrderedLockFn(lock);
+  if (fnptr != reinterpret_cast<void*>(1)) {
+    reinterpret_cast<void(*)(int)>(fnptr)(lock);
+  }
 }
 
-static void (*gRecordReplayOrderedUnlockFn)(int);
-
 void SkRecordReplayOrderedUnlock(int lock) {
-  if (!gRecordReplayOrderedUnlockFn) {
-    void* fnptr = dlsym(RTLD_DEFAULT, "RecordReplayOrderedUnlock");
-    if (!fnptr) {
-      return;
-    }
-    gRecordReplayOrderedUnlockFn = reinterpret_cast<void(*)(int)>(fnptr);
+  static void* fnptr;
+  if (!fnptr) {
+    fnptr = LookupRecordReplaySymbol("RecordReplayOrderedUnlock");
   }
-
-  gRecordReplayOrderedUnlockFn(lock);
+  if (fnptr != reinterpret_cast<void*>(1)) {
+    reinterpret_cast<void(*)(int)>(fnptr)(lock);
+  }
 }
 
 #if defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_IOS)
