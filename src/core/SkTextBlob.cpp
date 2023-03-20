@@ -917,9 +917,8 @@ int get_glyph_run_intercepts(const sktext::GlyphRun& glyphRun,
 
 int SkTextBlob::getIntercepts(const SkScalar bounds[2], SkScalar intervals[],
                               const SkPaint* paint) const {
-    // https://linear.app/replay/issue/RUN-757
-    SkRecordReplayAssert("SkTextBlob::getIntercepts Start %.2f %.2f",
-                         bounds[1], bounds[2]);
+    SkRecordReplayAssert("[RUN-757] SkTextBlob::getIntercepts Start %.2f %.2f",
+                         bounds[0], bounds[1]);
 
     SkTLazy<SkPaint> defaultPaint;
     if (paint == nullptr) {
@@ -939,8 +938,7 @@ int SkTextBlob::getIntercepts(const SkScalar bounds[2], SkScalar intervals[],
         }
     }
 
-    // https://linear.app/replay/issue/RUN-757
-    SkRecordReplayAssert("SkTextBlob::getIntercepts Done");
+    SkRecordReplayAssert("[RUN-757] SkTextBlob::getIntercepts Done");
 
     return intervalCount;
 }
