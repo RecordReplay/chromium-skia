@@ -16,6 +16,7 @@
 #include <stdarg.h>
 #include <string.h>
 
+static bool (*gRecordReplayIsReplaying)();
 static void (*gRecordReplayAssert)(const char*, va_list);
 static void (*gRecordReplayRegisterPointer)(const void* ptr);
 static void (*gRecordReplayUnregisterPointer)(const void* ptr);
@@ -47,6 +48,7 @@ static void RecordReplayLoadSymbol(const char* name, T& function) {
 static inline bool EnsureInitialized() {
   static bool initialized = false;
   if (!initialized) {
+    RecordReplayLoadSymbol("RecordReplayIsReplaying", gRecordReplayIsReplaying);
     RecordReplayLoadSymbol("RecordReplayAssert", gRecordReplayAssert);
     RecordReplayLoadSymbol("RecordReplayRegisterPointer", gRecordReplayRegisterPointer);
     RecordReplayLoadSymbol("RecordReplayUnregisterPointer", gRecordReplayUnregisterPointer);
@@ -57,6 +59,13 @@ static inline bool EnsureInitialized() {
     initialized = true;
   }
   return !!gRecordReplayAssert;
+}
+
+bool SkRecordReplayIsReplaying() {
+  if (EnsureInitialized()) {
+    return gRecordReplayIsReplaying();
+  }
+  return false;
 }
 
 void SkRecordReplayAssert(const char* format, ...) {

@@ -32,6 +32,8 @@
     #endif
 #endif
 
+#include "include/core/SkRecordReplay.h"
+
 static bool runtime_cpu_detection = true;
 void skcms_DisableRuntimeCPUDetection() {
     runtime_cpu_detection = false;
@@ -2475,6 +2477,14 @@ namespace baseline {
                 if (!runtime_cpu_detection) {
                     return CpuType::None;
                 }
+
+                // When replaying, memory snapshots might be taken and restored on a
+                // machine with different CPU characteristics, invalidating the cached
+                // CPU type.
+                if (SkRecordReplayIsReplaying()) {
+                    return CpuType::None;
+                }
+
                 // See http://www.sandpile.org/x86/cpuid.htm
 
                 // First, a basic cpuid(1) lets us check prerequisites for HSW, SKX.
