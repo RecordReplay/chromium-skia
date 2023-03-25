@@ -32,7 +32,32 @@
     #endif
 #endif
 
-#include "include/core/SkRecordReplay.h"
+#ifndef _WIN32
+#include <dlfcn.h>
+#else
+#include <windows.h>
+#endif
+
+static void* LookupRecordReplaySymbol(const char* name) {
+#ifndef _WIN32
+  void* fnptr = dlsym(RTLD_DEFAULT, name);
+#else
+  HMODULE module = GetModuleHandleA("windows-recordreplay.dll");
+  void* fnptr = module ? (void*)GetProcAddress(module, name) : nullptr;
+#endif
+  return fnptr ? fnptr : reinterpret_cast<void*>(1);
+}
+
+static bool RecordReplayIsReplaying() {
+  static void* fnptr;
+  if (!fnptr) {
+    fnptr = LookupRecordReplaySymbol("RecordReplayIsReplaying");
+  }
+  if (fnptr != reinterpret_cast<void*>(1)) {
+    return reinterpret_cast<bool(*)()>(fnptr)();
+  }
+  return false;
+}
 
 static bool runtime_cpu_detection = true;
 void skcms_DisableRuntimeCPUDetection() {
@@ -2481,7 +2506,7 @@ namespace baseline {
                 // When replaying, memory snapshots might be taken and restored on a
                 // machine with different CPU characteristics, invalidating the cached
                 // CPU type.
-                if (SkRecordReplayIsReplaying()) {
+                if (RecordReplayIsReplaying()) {
                     return CpuType::None;
                 }
 
