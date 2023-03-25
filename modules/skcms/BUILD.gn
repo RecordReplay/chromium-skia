@@ -13,4 +13,6 @@ static_library("skcms") {
 
   public = skcms_public_headers
   sources = skcms_sources
+
+  include_dirs = [ "../../include" ]
 }
