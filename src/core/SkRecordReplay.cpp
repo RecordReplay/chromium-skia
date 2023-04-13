@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include "include/private/SkOnce.h"
 #include "SkRecordReplay.h"
 
 #ifndef _WIN32
@@ -23,6 +24,7 @@ static int (*gRecordReplayPointerId)(const void* ptr);
 static bool (*gRecordReplayAreEventsDisallowed)();
 static void (*gRecordReplayBeginPassThroughEvents)();
 static void (*gRecordReplayEndPassThroughEvents)();
+static bool (*gRecordReplayIsReplaying)(void);
 
 template <typename Src, typename Dst>
 static inline void CastPointer(const Src src, Dst* dst) {
@@ -45,8 +47,8 @@ static void RecordReplayLoadSymbol(const char* name, T& function) {
 }
 
 static inline bool EnsureInitialized() {
-  static bool initialized = false;
-  if (!initialized) {
+  static SkOnce once;
+  once([]{
     RecordReplayLoadSymbol("RecordReplayAssert", gRecordReplayAssert);
     RecordReplayLoadSymbol("RecordReplayRegisterPointer", gRecordReplayRegisterPointer);
     RecordReplayLoadSymbol("RecordReplayUnregisterPointer", gRecordReplayUnregisterPointer);
@@ -54,8 +56,9 @@ static inline bool EnsureInitialized() {
     RecordReplayLoadSymbol("RecordReplayAreEventsDisallowed", gRecordReplayAreEventsDisallowed);
     RecordReplayLoadSymbol("RecordReplayBeginPassThroughEvents", gRecordReplayBeginPassThroughEvents);
     RecordReplayLoadSymbol("RecordReplayEndPassThroughEvents", gRecordReplayEndPassThroughEvents);
-    initialized = true;
-  }
+    RecordReplayLoadSymbol("RecordReplayEndPassThroughEvents", gRecordReplayEndPassThroughEvents);
+    RecordReplayLoadSymbol("RecordReplayIsReplaying", gRecordReplayIsReplaying);
+  });
   return !!gRecordReplayAssert;
 }
 
@@ -104,4 +107,12 @@ void SkRecordReplayEndPassThroughEvents() {
   if (EnsureInitialized()) {
     gRecordReplayEndPassThroughEvents();
   }
+}
+
+bool SkRecordReplayIsRecordingOrReplaying(void) {
+  return EnsureInitialized() && gRecordReplayAssert != nullptr;
+}
+
+bool SkRecordReplayIsReplaying(void) {
+  return EnsureInitialized() && gRecordReplayIsReplaying();
 }
