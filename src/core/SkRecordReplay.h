@@ -16,5 +16,7 @@ extern int SkRecordReplayPointerId(const void* ptr);
 extern bool SkRecordReplayAreEventsDisallowed();
 extern void SkRecordReplayBeginPassThroughEvents();
 extern void SkRecordReplayEndPassThroughEvents();
+extern bool SkRecordReplayIsRecordingOrReplaying();
+extern bool SkRecordReplayIsReplaying();
 
 #endif

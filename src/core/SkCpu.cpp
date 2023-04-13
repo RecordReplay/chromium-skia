@@ -9,6 +9,7 @@
 #include "include/core/SkString.h"
 #include "include/private/SkOnce.h"
 #include "src/core/SkCpu.h"
+#include "src/core/SkRecordReplay.h"
 
 #if defined(SK_CPU_X86)
     #if defined(_MSC_VER)
@@ -157,5 +158,10 @@ uint32_t SkCpu::gCachedFeatures = 0;
 
 void SkCpu::CacheRuntimeFeatures() {
     static SkOnce once;
-    once([] { gCachedFeatures = read_cpu_features(); });
+    once([]{
+        if (SkRecordReplayIsReplaying()) {
+            return;
+        }
+        gCachedFeatures = read_cpu_features();
+    });
 }
