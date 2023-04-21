@@ -88,6 +88,8 @@ void SkCachedData::inMutexRef(bool fromCache) {
 }
 
 bool SkCachedData::inMutexUnref(bool fromCache) {
+    SkRecordReplayAssert(
+            "[RUN-593-1783] SkCachedData::inMutexUnref %d %d %d", fRefCnt, fInCache, fromCache);
     switch (--fRefCnt) {
         case 0:
             // we're going to be deleted, so we need to be unlocked (for DiscardableMemory)

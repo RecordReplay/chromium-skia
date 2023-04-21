@@ -246,6 +246,7 @@ static int gPurgeHitCounter;
 #endif
 
 void SkResourceCache::purgeSharedID(uint64_t sharedID) {
+    SkRecordReplayAssert("[RUN-593-1783] SkResourceCache::purgeSharedID A %llu", sharedID);
     if (0 == sharedID) {
         return;
     }
@@ -259,6 +260,10 @@ void SkResourceCache::purgeSharedID(uint64_t sharedID) {
     Rec* rec = fTail;
     while (rec) {
         Rec* prev = rec->fPrev;
+        SkRecordReplayAssert("[RUN-593-1783] SkResourceCache::purgeSharedID B %llu %d %d",
+                             sharedID,
+                             rec->getKey().getSharedID() == sharedID,
+                             rec->canBePurged());
         if (rec->getKey().getSharedID() == sharedID) {
             // even though the "src" is now dead, caches could still be in-flight, so
             // we have to check if it can be removed.
@@ -271,6 +276,8 @@ void SkResourceCache::purgeSharedID(uint64_t sharedID) {
         }
         rec = prev;
     }
+
+    SkRecordReplayAssert("[RUN-593-1783] SkResourceCache::purgeSharedID C %llu", sharedID);
 
 #ifdef SK_TRACK_PURGE_SHAREDID_HITRATE
     if (found) {
@@ -456,6 +463,8 @@ size_t SkResourceCache::getEffectiveSingleAllocationByteLimit() const {
 void SkResourceCache::checkMessages() {
     SkTArray<PurgeSharedIDMessage> msgs;
     fPurgeSharedIDInbox.poll(&msgs);
+
+    SkRecordReplayAssert("[RUN-593-1783] SkResourceCache::checkMessages %d", msgs.count());
     for (int i = 0; i < msgs.count(); ++i) {
         this->purgeSharedID(msgs[i].fSharedID);
     }
