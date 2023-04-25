@@ -18,6 +18,8 @@
 #include "include/private/SkTArray.h"
 #include "include/private/SkTDArray.h"
 
+#include "src/core/SkRecordReplay.h"
+
 /**
  * The following method must have a specialization for type 'Message':
  *
