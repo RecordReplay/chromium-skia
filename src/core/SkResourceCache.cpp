@@ -22,10 +22,15 @@
 
 DECLARE_SKMESSAGEBUS_MESSAGE(SkResourceCache::PurgeSharedIDMessage, uint32_t, true)
 
+// Replay-edit: assign names to parameters so we can assert on them.
+// NOTE: We cannot assert on the inbox or message id up the stack, since
+// they are not always assured to be numbers.
 static inline bool SkShouldPostMessageToBus(
-        const SkResourceCache::PurgeSharedIDMessage&, uint32_t) {
+        const SkResourceCache::PurgeSharedIDMessage& message, uint32_t inboxId) {
     // SkResourceCache is typically used as a singleton and we don't label Inboxes so all messages
     // go to all inboxes.
+    SkRecordReplayAssert(
+            "[RUN-593-1801] SkShouldPostMessageToBus %u %llu", inboxId, message.fSharedID);
     return true;
 }
 

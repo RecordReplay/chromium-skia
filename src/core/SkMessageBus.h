@@ -18,6 +18,8 @@
 #include "include/private/SkTArray.h"
 #include "include/private/SkTDArray.h"
 
+#include "src/core/SkRecordReplay.h"
+
 /**
  * The following method must have a specialization for type 'Message':
  *
@@ -110,6 +112,7 @@ SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::~Inbox() {
 template <typename Message, typename IDType, bool AllowCopyableMessage>
 void SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::receive(Message m) {
     SkAutoMutexExclusive lock(fMessagesMutex);
+    SkRecordReplayAssert("[RUN-593-1801] SkMessageBus::Inbox::receive");
     fMessages.push_back(std::move(m));
 }
 
@@ -132,6 +135,10 @@ template <typename Message, typename IDType, bool AllowCopyableMessage>
     auto* bus = SkMessageBus<Message, IDType, AllowCopyableMessage>::Get();
     SkAutoMutexExclusive lock(bus->fInboxesMutex);
     for (int i = 0; i < bus->fInboxes.size(); i++) {
+        // NOTE: As of adding of this Assert, upstream already changed |SkTArray::count| to `size`
+        // (same type though).
+        SkRecordReplayAssert(
+                "[RUN-593-1801] SkMessageBus::Post %d %d", i, bus->fInboxes[i]->fMessages.count());
         if (SkShouldPostMessageToBus(m, bus->fInboxes[i]->fUniqueID)) {
             if constexpr (AllowCopyableMessage) {
                 bus->fInboxes[i]->receive(m);
