@@ -73,9 +73,6 @@ uint32_t SkPixelRef::getGenerationID() const {
         // if we got here via the else path (pretty unlikely, but possible).
     }
 
-    if (!SkRecordReplayAreEventsDisallowed())
-        SkRecordReplayAssert("[RUN-593-1824] SkPixelRef::getGenerationID %u", id);
-
     return id & ~1u;  // Mask off bottom unique bit.
 }
 
