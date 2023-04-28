@@ -8,6 +8,7 @@
 #include "include/private/SkMalloc.h"
 #include "src/core/SkCachedData.h"
 #include "src/core/SkDiscardableMemory.h"
+
 #include "src/core/SkRecordReplay.h"
 
 SkCachedData::SkCachedData(void* data, size_t size)

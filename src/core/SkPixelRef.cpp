@@ -14,6 +14,8 @@
 
 #include <atomic>
 
+#include "src/core/SkRecordReplay.h"
+
 uint32_t SkNextID::ImageID() {
     // We never set the low bit.... see SkPixelRef::genIDIsUnique().
     static std::atomic<uint32_t> nextID{2};
@@ -70,6 +72,10 @@ uint32_t SkPixelRef::getGenerationID() const {
         // We can't quite SkASSERT(this->genIDIsUnique()). It could be non-unique
         // if we got here via the else path (pretty unlikely, but possible).
     }
+
+    if (!SkRecordReplayAreEventsDisallowed())
+        SkRecordReplayAssert("[RUN-593-1824] SkPixelRef::getGenerationID %u", id);
+
     return id & ~1u;  // Mask off bottom unique bit.
 }
 
@@ -85,7 +91,10 @@ void SkPixelRef::addGenIDChangeListener(sk_sp<SkIDChangeListener> listener) {
 // we need to be called *before* the genID gets changed or zerod
 void SkPixelRef::callGenIDChangeListeners() {
     // We don't invalidate ourselves if we think another SkPixelRef is sharing our genID.
+
     if (this->genIDIsUnique()) {
+        SkRecordReplayAssert("[RUN-593-1824] SkPixelRef::callGenIDChangeListeners");
+
         fGenIDChangeListeners.changed();
         if (fAddedToCache.exchange(false)) {
             SkNotifyBitmapGenIDIsStale(this->getGenerationID());
