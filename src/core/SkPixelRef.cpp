@@ -91,7 +91,6 @@ void SkPixelRef::addGenIDChangeListener(sk_sp<SkIDChangeListener> listener) {
 // we need to be called *before* the genID gets changed or zerod
 void SkPixelRef::callGenIDChangeListeners() {
     // We don't invalidate ourselves if we think another SkPixelRef is sharing our genID.
-
     if (this->genIDIsUnique()) {
         SkRecordReplayAssert("[RUN-593-1824] SkPixelRef::callGenIDChangeListeners");
 
