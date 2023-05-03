@@ -8,6 +8,7 @@
 #ifndef SkRecordReplay_DEFINED
 #define SkRecordReplay_DEFINED
 
+extern void SkRecordReplayWarning(const char* format, ...);
 extern void SkRecordReplayAssert(const char* format, ...);
 extern void SkRecordReplayRegisterPointer(const void* ptr);
 extern void SkRecordReplayUnregisterPointer(const void* ptr);
@@ -18,5 +19,6 @@ extern void SkRecordReplayBeginPassThroughEvents();
 extern void SkRecordReplayEndPassThroughEvents();
 extern bool SkRecordReplayIsRecordingOrReplaying();
 extern bool SkRecordReplayIsReplaying();
+extern uintptr_t SkRecordReplayValue(const char* why, uintptr_t v);
 
 #endif

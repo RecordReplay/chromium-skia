@@ -43,6 +43,7 @@ SkPicture::SkPicture() {
     do {
         fUniqueID = nextID.fetch_add(+1, std::memory_order_relaxed);
     } while (fUniqueID == 0);
+    fUniqueID = SkRecordReplayValue("SkPicture::fUniqueID", fUniqueID);
 }
 
 SkPicture::~SkPicture() {

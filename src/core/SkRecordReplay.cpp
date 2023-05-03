@@ -17,6 +17,7 @@
 #include <stdarg.h>
 #include <string.h>
 
+static void (*gRecordReplayWarning)(const char* format, va_list args);
 static void (*gRecordReplayAssert)(const char*, va_list);
 static void (*gRecordReplayRegisterPointer)(const void* ptr);
 static void (*gRecordReplayUnregisterPointer)(const void* ptr);
@@ -25,6 +26,7 @@ static bool (*gRecordReplayAreEventsDisallowed)();
 static void (*gRecordReplayBeginPassThroughEvents)();
 static void (*gRecordReplayEndPassThroughEvents)();
 static bool (*gRecordReplayIsReplaying)(void);
+static uintptr_t (*gRecordReplayValue)(const char* why, uintptr_t v);
 
 template <typename Src, typename Dst>
 static inline void CastPointer(const Src src, Dst* dst) {
@@ -49,6 +51,7 @@ static void RecordReplayLoadSymbol(const char* name, T& function) {
 static inline bool EnsureInitialized() {
   static SkOnce once;
   once([]{
+    RecordReplayLoadSymbol("RecordReplayWarning", gRecordReplayWarning);
     RecordReplayLoadSymbol("RecordReplayAssert", gRecordReplayAssert);
     RecordReplayLoadSymbol("RecordReplayRegisterPointer", gRecordReplayRegisterPointer);
     RecordReplayLoadSymbol("RecordReplayUnregisterPointer", gRecordReplayUnregisterPointer);
@@ -58,8 +61,18 @@ static inline bool EnsureInitialized() {
     RecordReplayLoadSymbol("RecordReplayEndPassThroughEvents", gRecordReplayEndPassThroughEvents);
     RecordReplayLoadSymbol("RecordReplayEndPassThroughEvents", gRecordReplayEndPassThroughEvents);
     RecordReplayLoadSymbol("RecordReplayIsReplaying", gRecordReplayIsReplaying);
+    RecordReplayLoadSymbol("RecordReplayValue", gRecordReplayValue);
   });
   return !!gRecordReplayAssert;
+}
+
+void SkRecordReplayWarning(const char* format, ...) {
+  if (EnsureInitialized()) {
+    va_list ap;
+    va_start(ap, format);
+    gRecordReplayWarning(format, ap);
+    va_end(ap);
+  }
 }
 
 void SkRecordReplayAssert(const char* format, ...) {
@@ -115,4 +128,11 @@ bool SkRecordReplayIsRecordingOrReplaying(void) {
 
 bool SkRecordReplayIsReplaying(void) {
   return EnsureInitialized() && gRecordReplayIsReplaying();
+}
+
+uintptr_t SkRecordReplayValue(const char* why, uintptr_t v) {
+  if (SkRecordReplayIsReplaying(/*"values"*/)) {
+    return gRecordReplayValue(why, v);
+  }
+  return v;
 }
