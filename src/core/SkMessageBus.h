@@ -112,7 +112,7 @@ SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::~Inbox() {
 template <typename Message, typename IDType, bool AllowCopyableMessage>
 void SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::receive(Message m) {
     SkAutoMutexExclusive lock(fMessagesMutex);
-    SkRecordReplayAssert("[RUN-593-1801] SkMessageBus::Inbox::receive");
+    SkRecordReplayAssert("[RUN-593-1863] SkMessageBus::Inbox::receive %zu", fMessages.size());
     fMessages.push_back(std::move(m));
 }
 
@@ -121,6 +121,8 @@ void SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::poll(SkTArray<M
     SkASSERT(messages);
     messages->reset();
     SkAutoMutexExclusive lock(fMessagesMutex);
+    SkRecordReplayAssert(
+            "[RUN-593-1863] SkMessageBus::Inbox::poll %zu %zu", fMessages.size(), messages->size());
     fMessages.swap(*messages);
 }
 
@@ -135,8 +137,8 @@ template <typename Message, typename IDType, bool AllowCopyableMessage>
     auto* bus = SkMessageBus<Message, IDType, AllowCopyableMessage>::Get();
     SkAutoMutexExclusive lock(bus->fInboxesMutex);
     for (int i = 0; i < bus->fInboxes.size(); i++) {
-        // NOTE: As of adding of this Assert, upstream already changed |SkTArray::count| to `size`
-        // (same type though).
+        // Migration NOTE: When this Assert was added, upstream already changed
+        // |fMessages.count| to |fMessages.size| (same type).
         SkRecordReplayAssert(
                 "[RUN-593-1801] SkMessageBus::Post %d %d", i, bus->fInboxes[i]->fMessages.count());
         if (SkShouldPostMessageToBus(m, bus->fInboxes[i]->fUniqueID)) {
