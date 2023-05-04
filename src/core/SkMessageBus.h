@@ -122,7 +122,7 @@ void SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::poll(SkTArray<M
     messages->reset();
     SkAutoMutexExclusive lock(fMessagesMutex);
     SkRecordReplayAssert(
-            "[RUN-593-1863] SkMessageBus::Inbox::poll %zu %zu", fMessages.size(), messages.size());
+            "[RUN-593-1863] SkMessageBus::Inbox::poll %zu %zu", fMessages.size(), messages->size());
     fMessages.swap(*messages);
 }
 
