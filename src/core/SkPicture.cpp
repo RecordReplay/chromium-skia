@@ -53,7 +53,7 @@ SkPicture::~SkPicture() {
         }
         else {
             // Leak and track SkPicture id (so we get a general idea of memory impact)
-            SkRecordReplayPrint("[RUN-593-1863] SkPicture::~SkPicture - leak SkPicture %u");
+            SkRecordReplayPrint("[RUN-593-1863] SkPicture::~SkPicture - leak SkPicture %u", fUniqueID);
         }
     }
 }
