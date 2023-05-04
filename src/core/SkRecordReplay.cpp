@@ -143,7 +143,7 @@ bool SkRecordReplayIsReplaying(void) {
 
 uintptr_t SkRecordReplayValue(const char* why, uintptr_t v) {
   // NOTE: we cannot currently call FeatureEnabled("values") :shrug:
-  if (SkRecordReplayIsReplaying(/*"values"*/)) {
+  if (SkRecordReplayIsRecordingOrReplaying(/*"values"*/)) {
     return gRecordReplayValue(why, v);
   }
   return v;

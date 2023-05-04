@@ -373,7 +373,8 @@ sk_sp<SkImage> SkImage::MakeFromRaster(const SkPixmap& pmap, RasterReleaseProc p
     return sk_make_sp<SkImage_Raster>(pmap.info(), std::move(data), pmap.rowBytes());
 }
 
-sk_sp<SkImage> SkMakeImageFromRasterBitmapPriv(const SkBitmap& bm, SkCopyPixelsMode cpm,
+sk_sp<SkImage> SkMakeImageFromRasterBitmapPriv(const SkBitmap& bm,
+                                               SkCopyPixelsMode cpm,
                                                uint32_t idForCopy) {
     if (kAlways_SkCopyPixelsMode == cpm || (!bm.isImmutable() && kNever_SkCopyPixelsMode != cpm)) {
         SkPixmap pmap;

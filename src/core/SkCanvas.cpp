@@ -1260,20 +1260,25 @@ void SkCanvas::internalRestore() {
 
     // Draw the layer's device contents into the now-current older device. We can't call public
     // draw functions since we don't want to record them.
+    SkRecordReplayAssert("DDBG SkCanvas::internalRestore A");
     if (layer && !layer->fDevice->isNoPixelsDevice() && !layer->fDiscard) {
+        SkRecordReplayAssert("DDBG SkCanvas::internalRestore B");
         layer->fDevice->setImmutable();
 
         // Don't go through AutoLayerForImageFilter since device draws are so closely tied to
         // internalSaveLayer and internalRestore.
         if (this->predrawNotify()) {
+            SkRecordReplayAssert("DDBG SkCanvas::internalRestore C");
             SkBaseDevice* dstDev = this->topDevice();
             if (layer->fImageFilter) {
+                SkRecordReplayAssert("DDBG SkCanvas::internalRestore D");
                 this->internalDrawDeviceWithFilter(layer->fDevice.get(), // src
                                                    dstDev,               // dst
                                                    layer->fImageFilter.get(),
                                                    layer->fPaint,
                                                    DeviceCompatibleWithFilter::kYes);
             } else {
+                SkRecordReplayAssert("DDBG SkCanvas::internalRestore E");
                 // NOTE: We don't just call internalDrawDeviceWithFilter with a null filter
                 // because we want to take advantage of overridden drawDevice functions for
                 // document-based devices.
@@ -1282,16 +1287,19 @@ void SkCanvas::internalRestore() {
             }
         }
     }
+    SkRecordReplayAssert("DDBG SkCanvas::internalRestore F");
 
     // Reset the clip restriction if the restore went past the save point that had added it.
     if (this->getSaveCount() < fClipRestrictionSaveCount) {
         fClipRestrictionRect.setEmpty();
         fClipRestrictionSaveCount = -1;
     }
+    SkRecordReplayAssert("DDBG SkCanvas::internalRestore G");
     // Update the quick-reject bounds in case the restore changed the top device or the
     // removed save record had included modifications to the clip stack.
     fQuickRejectBounds = this->computeDeviceClipBounds();
     this->validateClip();
+    SkRecordReplayAssert("DDBG SkCanvas::internalRestore H");
 }
 
 sk_sp<SkSurface> SkCanvas::makeSurface(const SkImageInfo& info, const SkSurfaceProps* props) {

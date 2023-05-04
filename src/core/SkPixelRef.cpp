@@ -64,6 +64,7 @@ void SkPixelRef::needsNewGenID() {
 }
 
 uint32_t SkPixelRef::getGenerationID() const {
+    // TODO: stabilize fTaggedGenID
     uint32_t id = fTaggedGenID.load();
     if (0 == id) {
         uint32_t next = SkNextID::ImageID() | 1u;
@@ -75,8 +76,8 @@ uint32_t SkPixelRef::getGenerationID() const {
         // We can't quite SkASSERT(this->genIDIsUnique()). It could be non-unique
         // if we got here via the else path (pretty unlikely, but possible).
     }
-    
-    id = (uint32_t)SkRecordReplayValue("SkPixelRef::getGenerationID", id);
+
+    SkRecordReplayAssert("[RUN-593-1863] SkPixelRef::getGenerationID %u", id);
 
     return id & ~1u;  // Mask off bottom unique bit.
 }
