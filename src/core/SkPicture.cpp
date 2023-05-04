@@ -51,8 +51,7 @@ SkPicture::~SkPicture() {
     if (fAddedToCache.load()) {
         if (!SkRecordReplayIsRecordingOrReplaying() || !SkRecordReplayAreEventsDisallowed()) {
             SkResourceCache::PostPurgeSharedID(SkPicturePriv::MakeSharedID(fUniqueID));
-        }
-        else {
+        } else {
             // Leak and track SkPicture id (so we get a general idea of memory impact)
             SkRecordReplayPrint("[RUN-593-1863] SkPicture::~SkPicture - leak SkPicture %u", fUniqueID);
         }
