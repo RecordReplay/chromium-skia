@@ -17,6 +17,7 @@
 #include <stdarg.h>
 #include <string.h>
 
+static void (*gRecordReplayPrint)(const char* format, va_list args);
 static void (*gRecordReplayWarning)(const char* format, va_list args);
 static void (*gRecordReplayAssert)(const char*, va_list);
 static void (*gRecordReplayRegisterPointer)(const void* ptr);
@@ -51,6 +52,7 @@ static void RecordReplayLoadSymbol(const char* name, T& function) {
 static inline bool EnsureInitialized() {
   static SkOnce once;
   once([]{
+    RecordReplayLoadSymbol("RecordReplayPrint", gRecordReplayPrint);
     RecordReplayLoadSymbol("RecordReplayWarning", gRecordReplayWarning);
     RecordReplayLoadSymbol("RecordReplayAssert", gRecordReplayAssert);
     RecordReplayLoadSymbol("RecordReplayRegisterPointer", gRecordReplayRegisterPointer);
@@ -64,6 +66,15 @@ static inline bool EnsureInitialized() {
     RecordReplayLoadSymbol("RecordReplayValue", gRecordReplayValue);
   });
   return !!gRecordReplayAssert;
+}
+
+void SkRecordReplayPrint(const char* format, ...) {
+  if (SkRecordReplayIsRecordingOrReplaying()) {
+    va_list args;
+    va_start(args, format);
+    gRecordReplayPrint(format, args);
+    va_end(args);
+  }
 }
 
 void SkRecordReplayWarning(const char* format, ...) {
@@ -131,6 +142,7 @@ bool SkRecordReplayIsReplaying(void) {
 }
 
 uintptr_t SkRecordReplayValue(const char* why, uintptr_t v) {
+  // NOTE: we cannot currently call FeatureEnabled("values") :shrug:
   if (SkRecordReplayIsReplaying(/*"values"*/)) {
     return gRecordReplayValue(why, v);
   }
