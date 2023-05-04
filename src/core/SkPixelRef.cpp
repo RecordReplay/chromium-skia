@@ -64,7 +64,6 @@ void SkPixelRef::needsNewGenID() {
 }
 
 uint32_t SkPixelRef::getGenerationID() const {
-    // TODO: stabilize fTaggedGenID
     uint32_t id = fTaggedGenID.load();
     if (0 == id) {
         uint32_t next = SkNextID::ImageID() | 1u;
