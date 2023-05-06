@@ -53,6 +53,22 @@
 
 class SkDescriptor;
 
+#include <dlfcn.h>
+
+static void* LookupRecordReplaySymbol(const char* name) {
+  void* fnptr = dlsym(RTLD_DEFAULT, name);
+  return fnptr ? fnptr : reinterpret_cast<void*>(1);
+}
+
+static void RecordReplayAssertBytes(const char* why, const void* ptr, size_t nbytes) {
+  static void* fnptr;
+  if (!fnptr) {
+    fnptr = LookupRecordReplaySymbol("RecordReplayAssertBytes");
+  }
+  if (fnptr != reinterpret_cast<void*>(1)) {
+    reinterpret_cast<void(*)(const char*, const void*, size_t)>(fnptr)(why, ptr, nbytes);
+  }
+}
 
 namespace {
 static inline const constexpr bool kSkShowTextBlitCoverage = false;
@@ -672,6 +688,12 @@ bool SkScalerContext_Mac::generatePath(const SkGlyph& glyph, SkPath* path) {
 
         CGAffineTransform scale(CGAffineTransformMakeScale(SkScalarToCGFloat(scaleX),
                                                            SkScalarToCGFloat(scaleY)));
+
+        RecordReplayAssertBytes("[RUN-1889] SkScalerContext_Mac::generatePath #1",
+                                &fTransform, sizeof(fTransform));
+        RecordReplayAssertBytes("[RUN-1889] SkScalerContext_Mac::generatePath #2",
+                                &scale, sizeof(scale));
+
         xform = CGAffineTransformConcat(fTransform, scale);
     }
 
