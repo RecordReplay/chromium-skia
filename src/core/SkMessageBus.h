@@ -92,6 +92,10 @@ SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::Inbox(IDType uniqueI
     // Register ourselves with the corresponding message bus.
     auto* bus = SkMessageBus<Message, IDType, AllowCopyableMessage>::Get();
     SkAutoMutexExclusive lock(bus->fInboxesMutex);
+
+    SkRecordReplayAssert(
+        "[RUN-593-1883] SkMessageBus::Inbox::Inbox %d", (int)bus->fInboxes.size());
+
     bus->fInboxes.push_back(this);
 }
 
@@ -103,16 +107,20 @@ SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::~Inbox() {
     // This is a cheaper fInboxes.remove(fInboxes.find(this)) when order doesn't matter.
     for (int i = 0; i < bus->fInboxes.size(); i++) {
         if (this == bus->fInboxes[i]) {
+            SkRecordReplayAssert("[RUN-593-1883] SkMessageBus::Inbox::~Inbox A %d %d", i,
+                                 (int)bus->fInboxes.size());
             bus->fInboxes.removeShuffle(i);
             break;
         }
     }
+    SkRecordReplayAssert(
+            "[RUN-593-1883] SkMessageBus::Inbox::~Inbox B %d", (int)bus->fInboxes.size());
 }
 
 template <typename Message, typename IDType, bool AllowCopyableMessage>
 void SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::receive(Message m) {
     SkAutoMutexExclusive lock(fMessagesMutex);
-    SkRecordReplayAssert("[RUN-593-1863] SkMessageBus::Inbox::receive %zu", fMessages.size());
+    SkRecordReplayAssert("[RUN-593-1863] SkMessageBus::Inbox::receive %d", (int)fMessages.size());
     fMessages.push_back(std::move(m));
 }
 
@@ -121,8 +129,9 @@ void SkMessageBus<Message, IDType, AllowCopyableMessage>::Inbox::poll(SkTArray<M
     SkASSERT(messages);
     messages->reset();
     SkAutoMutexExclusive lock(fMessagesMutex);
-    SkRecordReplayAssert(
-            "[RUN-593-1863] SkMessageBus::Inbox::poll %zu %zu", fMessages.size(), messages->size());
+    SkRecordReplayAssert("[RUN-593-1863] SkMessageBus::Inbox::poll %d %d",
+                         (int)fMessages.size(),
+                         (int)messages->size());
     fMessages.swap(*messages);
 }
 
@@ -137,10 +146,9 @@ template <typename Message, typename IDType, bool AllowCopyableMessage>
     auto* bus = SkMessageBus<Message, IDType, AllowCopyableMessage>::Get();
     SkAutoMutexExclusive lock(bus->fInboxesMutex);
     for (int i = 0; i < bus->fInboxes.size(); i++) {
-        // Migration NOTE: When this Assert was added, upstream already changed
-        // |fMessages.count| to |fMessages.size| (same type).
-        SkRecordReplayAssert(
-                "[RUN-593-1801] SkMessageBus::Post %d %d", i, bus->fInboxes[i]->fMessages.count());
+        SkRecordReplayAssert("[RUN-593-1801] SkMessageBus::Post %d %d",
+                             i,
+                             (int)bus->fInboxes.size());
         if (SkShouldPostMessageToBus(m, bus->fInboxes[i]->fUniqueID)) {
             if constexpr (AllowCopyableMessage) {
                 bus->fInboxes[i]->receive(m);

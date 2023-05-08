@@ -94,11 +94,20 @@ void SkPixelRef::addGenIDChangeListener(sk_sp<SkIDChangeListener> listener) {
 void SkPixelRef::callGenIDChangeListeners() {
     // We don't invalidate ourselves if we think another SkPixelRef is sharing our genID.
     if (this->genIDIsUnique()) {
-        SkRecordReplayAssert("[RUN-593-1824] SkPixelRef::callGenIDChangeListeners");
+        if (!SkRecordReplayAreEventsDisallowed())
+            SkRecordReplayAssert("[RUN-593-1824] SkPixelRef::callGenIDChangeListeners");
 
         fGenIDChangeListeners.changed();
         if (fAddedToCache.exchange(false)) {
-            SkNotifyBitmapGenIDIsStale(this->getGenerationID());
+            if (!SkRecordReplayIsRecordingOrReplaying(/* "leak-references" */) ||
+                !SkRecordReplayAreEventsDisallowed()) {
+                SkNotifyBitmapGenIDIsStale(this->getGenerationID());
+            } else {
+                // Leak and print (so we get a general idea of memory impact)
+                SkRecordReplayPrint(
+                        "[RUN-593-1883] SkPixelRef::callGenIDChangeListeners - [LEAK] SkPixelRef %u",
+                        this->getGenerationID());
+            }
         }
     } else {
         // Listeners get at most one shot, so even though these weren't triggered or not, blow them
