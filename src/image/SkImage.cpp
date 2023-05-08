@@ -283,7 +283,13 @@ SkImage_Base::SkImage_Base(const SkImageInfo& info, uint32_t uniqueID)
 
 SkImage_Base::~SkImage_Base() {
     if (fAddedToRasterCache.load()) {
-        SkNotifyBitmapGenIDIsStale(this->uniqueID());
+        if (!SkRecordReplayIsRecordingOrReplaying(/* "leak-references" */) || !SkRecordReplayAreEventsDisallowed()) {
+            SkNotifyBitmapGenIDIsStale(this->uniqueID());
+        } else {
+            // Leak and track SkPicture id (so we get a general idea of memory impact)
+            SkRecordReplayPrint("[RUN-593-1883] SkImage_Base::~SkImage_Base - leak SkImage_Base %u",
+                                fUniqueID);
+        }
     }
 }
 

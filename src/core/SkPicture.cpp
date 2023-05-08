@@ -49,7 +49,7 @@ SkPicture::SkPicture() {
 
 SkPicture::~SkPicture() {
     if (fAddedToCache.load()) {
-        if (!SkRecordReplayIsRecordingOrReplaying() || !SkRecordReplayAreEventsDisallowed()) {
+        if (!SkRecordReplayIsRecordingOrReplaying(/* "leak-references" */) || !SkRecordReplayAreEventsDisallowed()) {
             SkResourceCache::PostPurgeSharedID(SkPicturePriv::MakeSharedID(fUniqueID));
         } else {
             // Leak and track SkPicture id (so we get a general idea of memory impact)
