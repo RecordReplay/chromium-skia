@@ -47,6 +47,8 @@
 #include <dwrite_1.h>
 #include <dwrite_3.h>
 
+#include "src/core/SkRecordReplay.h"
+
 namespace {
 static inline const constexpr bool kSkShowTextBlitCoverage = false;
 
@@ -488,6 +490,8 @@ HRESULT SkScalerContext_DW::getBoundingBox(SkGlyph* glyph,
                                            DWRITE_TEXTURE_TYPE textureType,
                                            RECT* bbox)
 {
+    SkRecordReplayDiagnostic("[RUN-1953] SkScalerContext_DW::getBoundingBox");
+
     DWriteFontTypeface* typeface = this->getDWriteTypeface();
 
     //Measure raster size.
@@ -520,6 +524,8 @@ HRESULT SkScalerContext_DW::getBoundingBox(SkGlyph* glyph,
                 (fGridFitMode == DWRITE_GRID_FIT_MODE_DISABLED ||
                  fAntiAliasMode == DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE))
         {
+            SkRecordReplayDiagnostic("[RUN-1953] SkScalerContext_DW::getBoundingBox #1");
+
             HRM(typeface->fFactory2->CreateGlyphRunAnalysis(
                     &run,
                     &fXform,
@@ -532,6 +538,8 @@ HRESULT SkScalerContext_DW::getBoundingBox(SkGlyph* glyph,
                     &glyphRunAnalysis),
                 "Could not create DW2 glyph run analysis.");
         } else {
+            SkRecordReplayDiagnostic("[RUN-1953] SkScalerContext_DW::getBoundingBox #2");
+
             HRM(typeface->fFactory->CreateGlyphRunAnalysis(&run,
                     1.0f, // pixelsPerDip,
                     &fXform,
@@ -543,11 +551,13 @@ HRESULT SkScalerContext_DW::getBoundingBox(SkGlyph* glyph,
                 "Could not create glyph run analysis.");
         }
     }
+    SkRecordReplayDiagnostic("[RUN-1953] SkScalerContext_DW::getBoundingBox #3");
     {
         Shared l(maybe_dw_mutex(*typeface));
         HRM(glyphRunAnalysis->GetAlphaTextureBounds(textureType, bbox),
             "Could not get texture bounds.");
     }
+    SkRecordReplayDiagnostic("[RUN-1953] SkScalerContext_DW::getBoundingBox Done");
     return S_OK;
 }
 
