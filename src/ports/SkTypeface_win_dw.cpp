@@ -491,6 +491,9 @@ sk_sp<SkTypeface> DWriteFontTypeface::onMakeClone(const SkFontArguments& args) c
 std::unique_ptr<SkStreamAsset> DWriteFontTypeface::onOpenStream(int* ttcIndex) const {
     *ttcIndex = fDWriteFontFace->GetIndex();
 
+    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream Start");
+    SkRecordReplayDiagnostic("[RUN-1981] DWriteFontTypeface::onOpenStream Start");
+
     UINT32 numFiles = 0;
     HRNM(fDWriteFontFace->GetFiles(&numFiles, nullptr),
          "Could not get number of font files.");
@@ -513,6 +516,9 @@ std::unique_ptr<SkStreamAsset> DWriteFontTypeface::onOpenStream(int* ttcIndex) c
     HRNM(fontFileLoader->CreateStreamFromKey(fontFileKey, fontFileKeySize,
                                              &fontFileStream),
          "Could not create font file stream.");
+
+    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream Done");
+    SkRecordReplayDiagnostic("[RUN-1981] DWriteFontTypeface::onOpenStream Done");
 
     return std::unique_ptr<SkStreamAsset>(new SkDWriteFontFileStream(fontFileStream.get()));
 }
