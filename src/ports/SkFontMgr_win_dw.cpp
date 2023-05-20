@@ -30,6 +30,8 @@
 #include <dwrite_2.h>
 #include <dwrite_3.h>
 
+#include "src/core/SkRecordReplay.h"
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class StreamFontFileLoader : public IDWriteFontFileLoader {
@@ -58,7 +60,11 @@ public:
 private:
     StreamFontFileLoader(std::unique_ptr<SkStreamAsset> stream)
         : fStream(std::move(stream)), fRefCount(1)
-    {}
+    {
+      uintptr_t thisv = SkRecordReplayValue("StreamFontFileLoader thisv", (uintptr_t)this);
+      uintptr_t vtable = SkRecordReplayValue("StreamFontFileLoader vtable", *(uintptr_t*)this);
+      SkRecordReplayAssert("[RUN-1981] StreamFontFileLoader::StreamFontFileLoader %p %p", (void*)thisv, (void*)vtable);
+    }
     virtual ~StreamFontFileLoader() { }
 
     std::unique_ptr<SkStreamAsset> fStream;

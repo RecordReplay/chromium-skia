@@ -509,8 +509,14 @@ std::unique_ptr<SkStreamAsset> DWriteFontTypeface::onOpenStream(int* ttcIndex) c
     HRNM(fontFile->GetReferenceKey(&fontFileKey, &fontFileKeySize),
          "Could not get font file reference key.");
 
+    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream #5");
+
     SkTScopedComPtr<IDWriteFontFileLoader> fontFileLoader;
     HRNM(fontFile->GetLoader(&fontFileLoader), "Could not get font file loader.");
+
+    uintptr_t thisv = SkRecordReplayValue("DWriteFontTypeface::onOpenStream thisv", (uintptr_t)fontFileLoader.get());
+    uintptr_t vtable = SkRecordReplayValue("DWriteFontTypeface::onOpenStream vtable", *(uintptr_t*)fontFileLoader.get());
+    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream #6 %p %p", (void*)thisv, (void*)vtable);
 
     SkTScopedComPtr<IDWriteFontFileStream> fontFileStream;
     HRNM(fontFileLoader->CreateStreamFromKey(fontFileKey, fontFileKeySize,
