@@ -33,8 +33,6 @@
 #include "src/utils/win/SkDWrite.h"
 #include "src/utils/win/SkDWriteFontFileStream.h"
 
-#include "src/core/SkRecordReplay.h"
-
 HRESULT DWriteFontTypeface::initializePalette() {
     if (!fIsColorFont) {
         return S_OK;
@@ -264,19 +262,16 @@ bool DWriteFontTypeface::onGlyphMaskNeedsCurrentColor() const {
 int DWriteFontTypeface::onGetVariationDesignPosition(
     SkFontArguments::VariationPosition::Coordinate coordinates[], int coordinateCount) const
 {
-    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onGetVariationDesignPosition");
 
 #if defined(NTDDI_WIN10_RS3) && NTDDI_VERSION >= NTDDI_WIN10_RS3
 
     SkTScopedComPtr<IDWriteFontFace5> fontFace5;
     if (FAILED(fDWriteFontFace->QueryInterface(&fontFace5))) {
-        SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onGetVariationDesignPosition #1");
         return -1;
     }
 
     // Return 0 if the font is not variable font.
     if (!fontFace5->HasVariations()) {
-        SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onGetVariationDesignPosition #2");
         return 0;
     }
 
@@ -291,7 +286,6 @@ int DWriteFontTypeface::onGetVariationDesignPosition(
     }
 
     if (!coordinates || coordinateCount < 0 || (unsigned)coordinateCount < variableAxisCount) {
-        SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onGetVariationDesignPosition #3");
         return SkTo<int>(variableAxisCount);
     }
 
@@ -305,8 +299,6 @@ int DWriteFontTypeface::onGetVariationDesignPosition(
             ++coordIndex;
         }
     }
-
-    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onGetVariationDesignPosition Done");
 
     SkASSERT(coordIndex == variableAxisCount);
     return SkTo<int>(variableAxisCount);
@@ -491,48 +483,28 @@ sk_sp<SkTypeface> DWriteFontTypeface::onMakeClone(const SkFontArguments& args) c
 std::unique_ptr<SkStreamAsset> DWriteFontTypeface::onOpenStream(int* ttcIndex) const {
     *ttcIndex = fDWriteFontFace->GetIndex();
 
-    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream Start");
-    SkRecordReplayDiagnostic("[RUN-1981] DWriteFontTypeface::onOpenStream Start");
-
     UINT32 numFiles = 0;
     HRNM(fDWriteFontFace->GetFiles(&numFiles, nullptr),
          "Could not get number of font files.");
-
-    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream #1");
-
     if (numFiles != 1) {
-        SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream #2");
         return nullptr;
     }
 
-    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream #3");
-
     SkTScopedComPtr<IDWriteFontFile> fontFile;
     HRNM(fDWriteFontFace->GetFiles(&numFiles, &fontFile), "Could not get font files.");
-
-    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream #4");
 
     const void* fontFileKey;
     UINT32 fontFileKeySize;
     HRNM(fontFile->GetReferenceKey(&fontFileKey, &fontFileKeySize),
          "Could not get font file reference key.");
 
-    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream #5");
-
     SkTScopedComPtr<IDWriteFontFileLoader> fontFileLoader;
     HRNM(fontFile->GetLoader(&fontFileLoader), "Could not get font file loader.");
-
-    uintptr_t thisv = SkRecordReplayValue("DWriteFontTypeface::onOpenStream thisv", (uintptr_t)fontFileLoader.get());
-    uintptr_t vtable = SkRecordReplayValue("DWriteFontTypeface::onOpenStream vtable", *(uintptr_t*)fontFileLoader.get());
-    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream #6 %p %p", (void*)thisv, (void*)vtable);
 
     SkTScopedComPtr<IDWriteFontFileStream> fontFileStream;
     HRNM(fontFileLoader->CreateStreamFromKey(fontFileKey, fontFileKeySize,
                                              &fontFileStream),
          "Could not create font file stream.");
-
-    SkRecordReplayAssert("[RUN-1981] DWriteFontTypeface::onOpenStream Done");
-    SkRecordReplayDiagnostic("[RUN-1981] DWriteFontTypeface::onOpenStream Done");
 
     return std::unique_ptr<SkStreamAsset>(new SkDWriteFontFileStream(fontFileStream.get()));
 }
