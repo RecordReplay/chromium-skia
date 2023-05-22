@@ -20,6 +20,7 @@
 static void (*gRecordReplayPrint)(const char* format, va_list args);
 static void (*gRecordReplayWarning)(const char* format, va_list args);
 static void (*gRecordReplayAssert)(const char*, va_list);
+static void (*gRecordReplayDiagnostic)(const char*, va_list);
 static void (*gRecordReplayRegisterPointer)(const void* ptr);
 static void (*gRecordReplayUnregisterPointer)(const void* ptr);
 static int (*gRecordReplayPointerId)(const void* ptr);
@@ -55,6 +56,7 @@ static inline bool EnsureInitialized() {
     RecordReplayLoadSymbol("RecordReplayPrint", gRecordReplayPrint);
     RecordReplayLoadSymbol("RecordReplayWarning", gRecordReplayWarning);
     RecordReplayLoadSymbol("RecordReplayAssert", gRecordReplayAssert);
+    RecordReplayLoadSymbol("RecordReplayDiagnostic", gRecordReplayDiagnostic);
     RecordReplayLoadSymbol("RecordReplayRegisterPointer", gRecordReplayRegisterPointer);
     RecordReplayLoadSymbol("RecordReplayUnregisterPointer", gRecordReplayUnregisterPointer);
     RecordReplayLoadSymbol("RecordReplayPointerId", gRecordReplayPointerId);
@@ -91,6 +93,15 @@ void SkRecordReplayAssert(const char* format, ...) {
     va_list ap;
     va_start(ap, format);
     gRecordReplayAssert(format, ap);
+    va_end(ap);
+  }
+}
+
+void SkRecordReplayDiagnostic(const char* format, ...) {
+  if (EnsureInitialized()) {
+    va_list ap;
+    va_start(ap, format);
+    gRecordReplayDiagnostic(format, ap);
     va_end(ap);
   }
 }

@@ -11,6 +11,7 @@
 extern void SkRecordReplayPrint(const char* format, ...);
 extern void SkRecordReplayWarning(const char* format, ...);
 extern void SkRecordReplayAssert(const char* format, ...);
+extern void SkRecordReplayDiagnostic(const char* format, ...);
 extern void SkRecordReplayRegisterPointer(const void* ptr);
 extern void SkRecordReplayUnregisterPointer(const void* ptr);
 extern int SkRecordReplayPointerId(const void* ptr);
