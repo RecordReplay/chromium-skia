@@ -33,6 +33,8 @@
 #include "src/utils/win/SkDWrite.h"
 #include "src/utils/win/SkDWriteFontFileStream.h"
 
+#include "src/core/SkRecordReplay.h"
+
 HRESULT DWriteFontTypeface::initializePalette() {
     if (!fIsColorFont) {
         return S_OK;
@@ -481,12 +483,15 @@ sk_sp<SkTypeface> DWriteFontTypeface::onMakeClone(const SkFontArguments& args) c
 }
 
 std::unique_ptr<SkStreamAsset> DWriteFontTypeface::onOpenStream(int* ttcIndex) const {
+    SkRecordReplayAssert("[RUN-2058] DWriteFontTypeface::onOpenStream");
+
     *ttcIndex = fDWriteFontFace->GetIndex();
 
     UINT32 numFiles = 0;
     HRNM(fDWriteFontFace->GetFiles(&numFiles, nullptr),
          "Could not get number of font files.");
     if (numFiles != 1) {
+        SkRecordReplayAssert("[RUN-2058] DWriteFontTypeface::onOpenStream #1");
         return nullptr;
     }
 
@@ -505,6 +510,8 @@ std::unique_ptr<SkStreamAsset> DWriteFontTypeface::onOpenStream(int* ttcIndex) c
     HRNM(fontFileLoader->CreateStreamFromKey(fontFileKey, fontFileKeySize,
                                              &fontFileStream),
          "Could not create font file stream.");
+
+    SkRecordReplayAssert("[RUN-2058] DWriteFontTypeface::onOpenStream Done");
 
     return std::unique_ptr<SkStreamAsset>(new SkDWriteFontFileStream(fontFileStream.get()));
 }
