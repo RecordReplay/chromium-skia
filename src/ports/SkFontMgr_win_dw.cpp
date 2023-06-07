@@ -30,6 +30,8 @@
 #include <dwrite_2.h>
 #include <dwrite_3.h>
 
+#include "src/core/SkRecordReplay.h"
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class StreamFontFileLoader : public IDWriteFontFileLoader {
@@ -562,7 +564,10 @@ SkFontStyleSet* SkFontMgr_DirectWrite::onCreateStyleSet(int index) const {
 }
 
 SkFontStyleSet* SkFontMgr_DirectWrite::onMatchFamily(const char familyName[]) const {
+    SkRecordReplayAssert("[RUN-2116] SkFontMgr_DirectWrite::onMatchFamily %s", familyName);
+
     if (!familyName) {
+        SkRecordReplayAssert("[RUN-2116] SkFontMgr_DirectWrite::onMatchFamily #1");
         return nullptr;
     }
 
@@ -573,6 +578,9 @@ SkFontStyleSet* SkFontMgr_DirectWrite::onMatchFamily(const char familyName[]) co
     BOOL exists;
     HRNM(fFontCollection->FindFamilyName(dwFamilyName.get(), &index, &exists),
             "Failed while finding family by name.");
+
+    SkRecordReplayAssert("[RUN-2116] SkFontMgr_DirectWrite::onMatchFamily #2");
+
     if (!exists) {
         return nullptr;
     }
