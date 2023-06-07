@@ -30,6 +30,8 @@
 #include <dwrite_2.h>
 #include <dwrite_3.h>
 
+#include "src/core/SkRecordReplay.h"
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class StreamFontFileLoader : public IDWriteFontFileLoader {
@@ -93,9 +95,14 @@ SK_STDMETHODIMP StreamFontFileLoader::CreateStreamFromKey(
     UINT32 fontFileReferenceKeySize,
     IDWriteFontFileStream** fontFileStream)
 {
+    SkRecordReplayAssert("[RUN-2058] StreamFontFileLoader::CreateStreamFromKey");
+
     SkTScopedComPtr<SkDWriteFontFileStreamWrapper> stream;
     HR(SkDWriteFontFileStreamWrapper::Create(fStream->duplicate().release(), &stream));
     *fontFileStream = stream.release();
+
+    SkRecordReplayAssert("[RUN-2058] StreamFontFileLoader::CreateStreamFromKey Done");
+
     return S_OK;
 }
 

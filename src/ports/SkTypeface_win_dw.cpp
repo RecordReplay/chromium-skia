@@ -490,6 +490,9 @@ std::unique_ptr<SkStreamAsset> DWriteFontTypeface::onOpenStream(int* ttcIndex) c
     UINT32 numFiles = 0;
     HRNM(fDWriteFontFace->GetFiles(&numFiles, nullptr),
          "Could not get number of font files.");
+
+    SkRecordReplayAssert("[RUN-2058] DWriteFontTypeface::onOpenStream #1");
+
     if (numFiles != 1) {
         SkRecordReplayAssert("[RUN-2058] DWriteFontTypeface::onOpenStream #1");
         return nullptr;
@@ -498,13 +501,19 @@ std::unique_ptr<SkStreamAsset> DWriteFontTypeface::onOpenStream(int* ttcIndex) c
     SkTScopedComPtr<IDWriteFontFile> fontFile;
     HRNM(fDWriteFontFace->GetFiles(&numFiles, &fontFile), "Could not get font files.");
 
+    SkRecordReplayAssert("[RUN-2058] DWriteFontTypeface::onOpenStream #2");
+
     const void* fontFileKey;
     UINT32 fontFileKeySize;
     HRNM(fontFile->GetReferenceKey(&fontFileKey, &fontFileKeySize),
          "Could not get font file reference key.");
 
+    SkRecordReplayAssert("[RUN-2058] DWriteFontTypeface::onOpenStream #3");
+
     SkTScopedComPtr<IDWriteFontFileLoader> fontFileLoader;
     HRNM(fontFile->GetLoader(&fontFileLoader), "Could not get font file loader.");
+
+    SkRecordReplayAssert("[RUN-2058] DWriteFontTypeface::onOpenStream #4");
 
     SkTScopedComPtr<IDWriteFontFileStream> fontFileStream;
     HRNM(fontFileLoader->CreateStreamFromKey(fontFileKey, fontFileKeySize,
