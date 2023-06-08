@@ -569,7 +569,10 @@ SkFontStyleSet* SkFontMgr_DirectWrite::onCreateStyleSet(int index) const {
 }
 
 SkFontStyleSet* SkFontMgr_DirectWrite::onMatchFamily(const char familyName[]) const {
+    SkRecordReplayAssert("[RUN-2116] SkFontMgr_DirectWrite::onMatchFamily %s", familyName);
+
     if (!familyName) {
+        SkRecordReplayAssert("[RUN-2116] SkFontMgr_DirectWrite::onMatchFamily #1");
         return nullptr;
     }
 
@@ -580,6 +583,9 @@ SkFontStyleSet* SkFontMgr_DirectWrite::onMatchFamily(const char familyName[]) co
     BOOL exists;
     HRNM(fFontCollection->FindFamilyName(dwFamilyName.get(), &index, &exists),
             "Failed while finding family by name.");
+
+    SkRecordReplayAssert("[RUN-2116] SkFontMgr_DirectWrite::onMatchFamily #2");
+
     if (!exists) {
         return nullptr;
     }
