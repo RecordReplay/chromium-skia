@@ -85,12 +85,7 @@ SK_STDMETHODIMP_(ULONG) StreamFontFileLoader::AddRef() {
 SK_STDMETHODIMP_(ULONG) StreamFontFileLoader::Release() {
     ULONG newCount = InterlockedDecrement(&fRefCount);
     if (0 == newCount) {
-        // AddRef and Release calls made by the system when replaying
-        // do not match up exactly with what happened when recording, which
-        // can lead to this object being prematurely freed when replaying.
-        // For now we workaround this by letting the loader leak when replaying.
-        if (!SkRecordReplayIsReplaying())
-            delete this;
+        delete this;
     }
     return newCount;
 }
