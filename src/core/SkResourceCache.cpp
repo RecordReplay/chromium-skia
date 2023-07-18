@@ -555,9 +555,6 @@ void SkResourceCache::CheckMessages() {
 bool SkResourceCache::Find(const Key& key, FindVisitor visitor, void* context) {
     SkAutoMutexExclusive am(resource_cache_mutex());
     bool rv = get_cache()->find(key, visitor, context);
-
-    // https://linear.app/replay/issue/RUN-593
-    SkRecordReplayAssert("[RUN-593] SkResourceCache::Find Done %d", rv);
     return rv;
 }
 
