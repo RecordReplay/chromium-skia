@@ -12,25 +12,25 @@
 #include "src/core/SkRecordReplay.h"
 
 SkCachedData::SkCachedData(void* data, size_t size)
-    : fData(data)
+    : fMutex("SkCachedData")
+    , fData(data)
     , fSize(size)
     , fRefCnt(1)
     , fStorageType(kMalloc_StorageType)
     , fInCache(false)
     , fIsLocked(true)
-    , fMutex("SkCachedData")
 {
     fStorage.fMalloc = data;
 }
 
 SkCachedData::SkCachedData(size_t size, SkDiscardableMemory* dm)
-    : fData(dm->data())
+    : fMutex("SkCachedData")
+    , fData(dm->data())
     , fSize(size)
     , fRefCnt(1)
     , fStorageType(kDiscardableMemory_StorageType)
     , fInCache(false)
     , fIsLocked(true)
-    , fMutex("SkCachedData")
 {
     fStorage.fDM = dm;
 }
