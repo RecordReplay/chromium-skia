@@ -12,7 +12,7 @@
 #include "src/core/SkRecordReplay.h"
 
 SkCachedData::SkCachedData(void* data, size_t size)
-    : fMutex("SkCachedData")
+    : fMutex("SkCachedData.fMutex")
     , fData(data)
     , fSize(size)
     , fRefCnt(1)
@@ -24,7 +24,7 @@ SkCachedData::SkCachedData(void* data, size_t size)
 }
 
 SkCachedData::SkCachedData(size_t size, SkDiscardableMemory* dm)
-    : fMutex("SkCachedData")
+    : fMutex("SkCachedData.fMutex")
     , fData(dm->data())
     , fSize(size)
     , fRefCnt(1)
