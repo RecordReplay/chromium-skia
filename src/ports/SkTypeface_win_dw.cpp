@@ -258,6 +258,10 @@ SkTypeface::LocalizedStrings* DWriteFontTypeface::onCreateFamilyNameIterator() c
 }
 
 bool DWriteFontTypeface::onGlyphMaskNeedsCurrentColor() const {
+    if (RecordReplayAreEventsDisallowed()) {
+        // RUN-2619: We cannot read Windows fonts when replaying.
+        return false;
+    }
     return fDWriteFontFace2 && fDWriteFontFace2->GetColorPaletteCount() > 0;
 }
 
