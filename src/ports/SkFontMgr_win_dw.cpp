@@ -427,6 +427,8 @@ struct ProtoDWriteTypeface {
 };
 
 static bool FindByDWriteFont(SkTypeface* cached, void* ctx) {
+    SkRecordReplayAssert("[RUN-2612-2639] FindByDWriteFont %u", cached->uniqueID());
+
     DWriteFontTypeface* cshFace = reinterpret_cast<DWriteFontTypeface*>(cached);
     ProtoDWriteTypeface* ctxFace = reinterpret_cast<ProtoDWriteTypeface*>(ctx);
 
