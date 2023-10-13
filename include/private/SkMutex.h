@@ -14,7 +14,8 @@
 #include "include/private/SkThreadAnnotations.h"
 #include "include/private/SkThreadID.h"
 
-extern int SkRecordReplayCreateOrderedLock(const char* ordered_name);
+#include "src/core/SkRecordReplay.h"
+
 extern void SkRecordReplayOrderedLock(int lock);
 extern void SkRecordReplayOrderedUnlock(int lock);
 
