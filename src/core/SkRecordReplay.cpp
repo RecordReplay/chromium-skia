@@ -177,7 +177,7 @@ bool SkRecordReplayIsReplaying(void) {
 }
 
 uintptr_t SkRecordReplayValue(const char* why, uintptr_t v) {
-  if (SkRecordReplayIsRecordingOrReplaying("values")) {
+  if (SkRecordReplayIsRecordingOrReplaying("values", why)) {
     return gRecordReplayValue(why, v);
   }
   return v;
