@@ -14,8 +14,6 @@
 #include <windows.h>
 #endif
 
-#include "src/core/SkRecordReplay.h"
-
 static void* LookupRecordReplaySymbol(const char* name) {
 #ifndef _WIN32
   void* fnptr = dlsym(RTLD_DEFAULT, name);
@@ -24,6 +22,17 @@ static void* LookupRecordReplaySymbol(const char* name) {
   void* fnptr = module ? (void*)GetProcAddress(module, name) : nullptr;
 #endif
   return fnptr ? fnptr : reinterpret_cast<void*>(1);
+}
+
+int SkRecordReplayCreateOrderedLock(const char* ordered_name) {
+  static void* fnptr;
+  if (!fnptr) {
+    fnptr = LookupRecordReplaySymbol("RecordReplayCreateOrderedLock");
+  }
+  if (fnptr != reinterpret_cast<void*>(1)) {
+    return reinterpret_cast<int(*)(const char*)>(fnptr)(ordered_name);
+  }
+  return 0;
 }
 
 void SkRecordReplayOrderedLock(int lock) {
@@ -110,9 +119,6 @@ void SkSemaphore::osWait() {
 }
 
 bool SkSemaphore::try_wait() {
-  if (SkRecordReplayIsInReplayCode("DWriteFontTypeface::onGlyphMaskNeedsCurrentColor")) {
-    return false;
-  }
     int count = fCount.load(std::memory_order_relaxed);
     if (count > 0) {
         return fCount.compare_exchange_weak(count, count-1, std::memory_order_acquire);

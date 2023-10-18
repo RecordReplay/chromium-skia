@@ -258,7 +258,7 @@ SkTypeface::LocalizedStrings* DWriteFontTypeface::onCreateFamilyNameIterator() c
 }
 
 bool DWriteFontTypeface::onGlyphMaskNeedsCurrentColor() const {
-    if (SkRecordReplayIsInReplayCode("DWriteFontTypeface::onGlyphMaskNeedsCurrentColor")) {
+    if (SkRecordReplayAreEventsDisallowed("DWriteFontTypeface::onGlyphMaskNeedsCurrentColor")) {
         // RUN-2619: We cannot read Windows fonts when replaying.
         return false;
     }

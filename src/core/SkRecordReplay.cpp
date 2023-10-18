@@ -19,104 +19,6 @@
 
 #include <string>
 
-static inline bool EnsureInitialized();
-
-
-#if defined(_WIN32)
-
-#define DefineFunction(Name, Formals, Args, ReturnType, DefaultValue) \
-  static ReturnType (*gV8##Name) Formals;                             \
-  static inline ReturnType V8##Name Formals {                         \
-    EnsureInitialized();                                              \
-    return gV8##Name ? gV8##Name Args : DefaultValue;                 \
-  }
-        ForEachV8API(DefineFunction)
-#undef DefineFunction
-
-#define DefineFunctionVoid(Name, Formals, Args) \
-  static void (*gV8##Name) Formals;             \
-  static inline void V8##Name Formals {         \
-    EnsureInitialized();                        \
-    if (gV8##Name)                              \
-      gV8##Name Args;                           \
-  }
-                ForEachV8APIVoid(DefineFunctionVoid)
-#undef DefineFunctionVoid
-
-static void InitializationError(const char* format, ...) {
-  {
-    va_list args;
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    va_end(args);
-  }
-
-#if defined(_WIN32)
-  // Additionally write the message to a new file. Capturing the output written to
-  // stderr by browser subprocesses on windows is surprisingly difficult.
-  const char* dir = getenv("RECORD_REPLAY_LOG_DIRECTORY");
-  char file[1024];
-  snprintf(file, sizeof(file), "%s\\record_replay_initialization_error.txt", dir ? dir : ".");
-  FILE* f = fopen(file, "w");
-  if (f) {
-    va_list args;
-    va_start(args, format);
-    vfprintf(f, format, args);
-    va_end(args);
-    fclose(f);
-  }
-#endif
-
-  CHECK(0);
-}
-
-static void InitV8Bindings() {
-  HMODULE module;
-  if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
-			  reinterpret_cast<LPCSTR>(InitV8Bindings),
-			  &module)) {
-    InitializationError("GetModuleHandleExA failed %d, crashing...\n", (int)GetLastError());
-  }
-
-#define LoadFunction(Name, Formals, Args, ReturnType, DefaultValue)           \
-  gV8##Name = reinterpret_cast<ReturnType(*)Formals>(GetProcAddress(module, #Name))\
-  if (!gV8##Name) {                                                           \
-    InitializationError("Could not find V8 export %s, crashing...\n", #Name); \
-  }
-ForEachV8API(LoadFunction)
-#undef LoadFunction
-
-#define LoadFunctionVoid(Name, Formals, Args)                                 \
-  gV8##Name = reinterpret_cast<void(*)Formals>(GetProcAddress(module, #Name))\
-  if (!gV8##Name) {                                                           \
-    InitializationError("Could not find V8 export %s, crashing...\n", #Name); \
-  }
-ForEachV8APIVoid(LoadFunctionVoid)
-#undef LoadFunctionVoid
-}
-
-#else // !BUILD_FLAG(IS_WIN)
-
-#define DefineFunction(Name, Formals, Args, ReturnType, DefaultValue) \
-  extern "C" ReturnType V8##Name Formals;                             \
-  ReturnType Sk##Name Formals {                                       \
-    return V8##Name Args;                                             \
-  }
-        ForEachV8API(DefineFunction)
-#undef DefineFunction
-
-#define DefineFunctionVoid(Name, Formals, Args)                       \
-  extern "C" void V8##Name Formals;                                   \
-  void Sk##Name Formals {                                             \
-    V8##Name Args;                                                    \
-  }
-                ForEachV8APIVoid(DefineFunctionVoid)
-#undef DefineFunction
-
-static void InitV8Bindings() {
-}
-
-#endif // !BUILD_FLAG(IS_WIN)
 
 // ##########################################################################
 // Driver/Linker API
@@ -163,8 +65,6 @@ static void RecordReplayLoadSymbol(const char* name, T& function) {
 static inline bool EnsureInitialized() {
   static SkOnce once;
   once([]{
-    InitV8Bindings();
-
     RecordReplayLoadSymbol("RecordReplayPrint", gRecordReplayPrint);
     RecordReplayLoadSymbol("RecordReplayWarning", gRecordReplayWarning);
     RecordReplayLoadSymbol("RecordReplayAssert", gRecordReplayAssert);
@@ -179,6 +79,7 @@ static inline bool EnsureInitialized() {
     RecordReplayLoadSymbol("RecordReplayBeginPassThroughEvents", gRecordReplayBeginPassThroughEvents);
     RecordReplayLoadSymbol("RecordReplayEndPassThroughEvents", gRecordReplayEndPassThroughEvents);
     RecordReplayLoadSymbol("RecordReplayIsReplaying", gRecordReplayIsReplaying);
+    RecordReplayLoadSymbol("RecordReplayValue", gRecordReplayValue);
 
     gRecordingOrReplaying =
             gRecordReplayFeatureEnabled && gRecordReplayFeatureEnabled("record-replay", nullptr);
@@ -235,9 +136,28 @@ void SkRecordReplayUnregisterPointer(const void* ptr) {
   }
 }
 
+bool SkRecordReplayFeatureEnabled(const char* feature, const char* subfeature) {
+  if (EnsureInitialized()) {
+    if (!gHasDisabledFeatures) {
+        return true;
+    }
+    return gRecordReplayFeatureEnabled(feature, subfeature);
+  }
+  return true;
+}
+
 bool SkRecordReplayIsRecordingOrReplaying(const char* feature, const char* subfeature) {
   return EnsureInitialized() && gRecordingOrReplaying &&
     (!feature || SkRecordReplayFeatureEnabled(feature, subfeature));
+}
+
+bool SkRecordReplayAreEventsDisallowed(const char* why) {
+  if (EnsureInitialized()) {
+    if (SkRecordReplayIsRecordingOrReplaying("disallow-events", why)) {
+      return gRecordReplayAreEventsDisallowed();
+    }
+  }
+  return false;
 }
 
 void SkRecordReplayBeginPassThroughEvents() {
@@ -254,4 +174,11 @@ void SkRecordReplayEndPassThroughEvents() {
 
 bool SkRecordReplayIsReplaying(void) {
   return EnsureInitialized() && gRecordReplayIsReplaying();
+}
+
+uintptr_t SkRecordReplayValue(const char* why, uintptr_t v) {
+  if (SkRecordReplayIsRecordingOrReplaying("values")) {
+    return gRecordReplayValue(why, v);
+  }
+  return v;
 }
