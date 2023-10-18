@@ -16,10 +16,12 @@ extern void SkRecordReplayRegisterPointer(const void* ptr);
 extern void SkRecordReplayUnregisterPointer(const void* ptr);
 extern int SkRecordReplayPointerId(const void* ptr);
 
-extern bool SkRecordReplayAreEventsDisallowed();
+extern bool SkRecordReplayFeatureEnabled(const char* feature, const char* subfeature);
+extern bool SkRecordReplayIsRecordingOrReplaying(const char* feature = nullptr,
+                                                 const char* subfeature = nullptr);
+extern bool SkRecordReplayAreEventsDisallowed(const char* why = nullptr);
 extern void SkRecordReplayBeginPassThroughEvents();
 extern void SkRecordReplayEndPassThroughEvents();
-extern bool SkRecordReplayIsRecordingOrReplaying();
 extern bool SkRecordReplayIsReplaying();
 extern uintptr_t SkRecordReplayValue(const char* why, uintptr_t v);
 

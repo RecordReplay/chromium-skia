@@ -17,6 +17,15 @@
 #include <stdarg.h>
 #include <string.h>
 
+#include <string>
+
+
+// ##########################################################################
+// Driver/Linker API
+// ##########################################################################
+static bool gRecordingOrReplaying;
+static bool gHasDisabledFeatures;
+
 static void (*gRecordReplayPrint)(const char* format, va_list args);
 static void (*gRecordReplayWarning)(const char* format, va_list args);
 static void (*gRecordReplayAssert)(const char*, va_list);
@@ -24,6 +33,9 @@ static void (*gRecordReplayDiagnostic)(const char*, va_list);
 static void (*gRecordReplayRegisterPointer)(const void* ptr);
 static void (*gRecordReplayUnregisterPointer)(const void* ptr);
 static int (*gRecordReplayPointerId)(const void* ptr);
+
+static bool (*gRecordReplayHasDisabledFeatures)();
+static bool (*gRecordReplayFeatureEnabled)(const char* feature, const char* subfeature);
 static bool (*gRecordReplayAreEventsDisallowed)();
 static void (*gRecordReplayBeginPassThroughEvents)();
 static void (*gRecordReplayEndPassThroughEvents)();
@@ -60,12 +72,18 @@ static inline bool EnsureInitialized() {
     RecordReplayLoadSymbol("RecordReplayRegisterPointer", gRecordReplayRegisterPointer);
     RecordReplayLoadSymbol("RecordReplayUnregisterPointer", gRecordReplayUnregisterPointer);
     RecordReplayLoadSymbol("RecordReplayPointerId", gRecordReplayPointerId);
+
+    RecordReplayLoadSymbol("RecordReplayHasDisabledFeatures", gRecordReplayHasDisabledFeatures);
+    RecordReplayLoadSymbol("RecordReplayFeatureEnabled", gRecordReplayFeatureEnabled);
     RecordReplayLoadSymbol("RecordReplayAreEventsDisallowed", gRecordReplayAreEventsDisallowed);
     RecordReplayLoadSymbol("RecordReplayBeginPassThroughEvents", gRecordReplayBeginPassThroughEvents);
     RecordReplayLoadSymbol("RecordReplayEndPassThroughEvents", gRecordReplayEndPassThroughEvents);
-    RecordReplayLoadSymbol("RecordReplayEndPassThroughEvents", gRecordReplayEndPassThroughEvents);
     RecordReplayLoadSymbol("RecordReplayIsReplaying", gRecordReplayIsReplaying);
     RecordReplayLoadSymbol("RecordReplayValue", gRecordReplayValue);
+
+    gRecordingOrReplaying =
+            gRecordReplayFeatureEnabled && gRecordReplayFeatureEnabled("record-replay", nullptr);
+    gHasDisabledFeatures = gRecordingOrReplaying && gRecordReplayHasDisabledFeatures();
   });
   return !!gRecordReplayAssert;
 }
@@ -118,16 +136,26 @@ void SkRecordReplayUnregisterPointer(const void* ptr) {
   }
 }
 
-int SkRecordReplayPointerId(const void* ptr) {
+bool SkRecordReplayFeatureEnabled(const char* feature, const char* subfeature) {
   if (EnsureInitialized()) {
-    return gRecordReplayPointerId(ptr);
+    if (!gHasDisabledFeatures) {
+        return true;
+    }
+    return gRecordReplayFeatureEnabled(feature, subfeature);
   }
-  return 0;
+  return true;
 }
 
-bool SkRecordReplayAreEventsDisallowed() {
+bool SkRecordReplayIsRecordingOrReplaying(const char* feature, const char* subfeature) {
+  return EnsureInitialized() && gRecordingOrReplaying &&
+    (!feature || SkRecordReplayFeatureEnabled(feature, subfeature));
+}
+
+bool SkRecordReplayAreEventsDisallowed(const char* why) {
   if (EnsureInitialized()) {
-    return gRecordReplayAreEventsDisallowed();
+    if (SkRecordReplayIsRecordingOrReplaying("disallow-events", why)) {
+      return gRecordReplayAreEventsDisallowed();
+    }
   }
   return false;
 }
@@ -144,17 +172,12 @@ void SkRecordReplayEndPassThroughEvents() {
   }
 }
 
-bool SkRecordReplayIsRecordingOrReplaying(void) {
-  return EnsureInitialized() && gRecordReplayAssert != nullptr;
-}
-
 bool SkRecordReplayIsReplaying(void) {
   return EnsureInitialized() && gRecordReplayIsReplaying();
 }
 
 uintptr_t SkRecordReplayValue(const char* why, uintptr_t v) {
-  // NOTE: we cannot currently call FeatureEnabled("values") :shrug:
-  if (SkRecordReplayIsRecordingOrReplaying(/*"values"*/)) {
+  if (SkRecordReplayIsRecordingOrReplaying("values", why)) {
     return gRecordReplayValue(why, v);
   }
   return v;
