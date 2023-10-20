@@ -346,6 +346,7 @@ public:
         , fFontCollection(SkRefComPtr(fontCollection))
         , fLocaleName(localeNameLength)
         , fDefaultFamilyName(defaultFamilyNameLength)
+        , fTFCacheMutex("SkFontMgr_DirectWrite")
     {
         memcpy(fLocaleName.get(), localeName, localeNameLength * sizeof(WCHAR));
         memcpy(fDefaultFamilyName.get(), defaultFamilyName, defaultFamilyNameLength*sizeof(WCHAR));
