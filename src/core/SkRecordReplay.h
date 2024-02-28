@@ -23,6 +23,7 @@ extern bool SkRecordReplayAreEventsDisallowed(const char* why = nullptr);
 extern void SkRecordReplayBeginPassThroughEvents();
 extern void SkRecordReplayEndPassThroughEvents();
 extern bool SkRecordReplayIsReplaying();
+extern bool SkRecordReplayHasDivergedFromRecording();
 extern uintptr_t SkRecordReplayValue(const char* why, uintptr_t v);
 
 #endif
