@@ -40,6 +40,7 @@ static bool (*gRecordReplayAreEventsDisallowed)();
 static void (*gRecordReplayBeginPassThroughEvents)();
 static void (*gRecordReplayEndPassThroughEvents)();
 static bool (*gRecordReplayIsReplaying)(void);
+static bool (*gRecordReplayHasDivergedFromRecording)(void);
 static uintptr_t (*gRecordReplayValue)(const char* why, uintptr_t v);
 
 template <typename Src, typename Dst>
@@ -79,6 +80,7 @@ static inline bool EnsureInitialized() {
     RecordReplayLoadSymbol("RecordReplayBeginPassThroughEvents", gRecordReplayBeginPassThroughEvents);
     RecordReplayLoadSymbol("RecordReplayEndPassThroughEvents", gRecordReplayEndPassThroughEvents);
     RecordReplayLoadSymbol("RecordReplayIsReplaying", gRecordReplayIsReplaying);
+    RecordReplayLoadSymbol("RecordReplayHasDivergedFromRecording", gRecordReplayHasDivergedFromRecording);
     RecordReplayLoadSymbol("RecordReplayValue", gRecordReplayValue);
 
     gRecordingOrReplaying =
@@ -174,6 +176,12 @@ void SkRecordReplayEndPassThroughEvents() {
 
 bool SkRecordReplayIsReplaying(void) {
   return EnsureInitialized() && gRecordReplayIsReplaying();
+}
+
+bool SkRecordReplayHasDivergedFromRecording(void) {
+  return EnsureInitialized() && 
+    gRecordReplayIsReplaying() && 
+    gRecordReplayHasDivergedFromRecording();
 }
 
 uintptr_t SkRecordReplayValue(const char* why, uintptr_t v) {
