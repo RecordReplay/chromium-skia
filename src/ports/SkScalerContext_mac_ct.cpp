@@ -142,10 +142,10 @@ SkScalerContext_Mac::SkScalerContext_Mac(sk_sp<SkTypeface_Mac> typeface,
         fInvTransform = fTransform;
     }
 
-    if (recordreplay::SkRecordReplayAreEventsUnavailable("divergent-update")) {
+    if (SkRecordReplayAreEventsUnavailable("divergent-update")) {
         // Short-circuit font creation because it requires a lot of
         // bindings that we do not yet support.
-        fCGFont = CTFontCopyGraphicsFont(ctFont, nullptr);
+        fCGFont.reset(CTFontCopyGraphicsFont(ctFont, nullptr));
         return;
     }
 
