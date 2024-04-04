@@ -22,6 +22,8 @@
 #include "src/core/SkUtils.h"
 #include "src/utils/SkUTF.h"
 
+#include "src/core/SkRecordReplay.h"
+
 #define kDefault_Size       SkPaintDefaults_TextSize
 #define kDefault_Flags      SkFont::kBaselineSnap_PrivFlag
 #define kDefault_Edging     SkFont::Edging::kAntiAlias
