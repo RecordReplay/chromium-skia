@@ -24,6 +24,7 @@ extern void SkRecordReplayBeginPassThroughEvents();
 extern void SkRecordReplayEndPassThroughEvents();
 extern bool SkRecordReplayIsReplaying();
 extern bool SkRecordReplayHasDivergedFromRecording();
+extern bool SkRecordReplayAreEventsUnavailable(const char* why);
 extern uintptr_t SkRecordReplayValue(const char* why, uintptr_t v);
 
 #endif
