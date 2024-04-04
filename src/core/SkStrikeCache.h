@@ -19,8 +19,6 @@
 #include "src/core/SkStrikeSpec.h"
 #include "src/text/StrikeForGPU.h"
 
-#include "src/core/SkRecordReplay.h"
-
 class SkTraceMemoryDump;
 class SkStrikeCache;
 

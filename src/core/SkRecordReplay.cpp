@@ -184,6 +184,11 @@ bool SkRecordReplayHasDivergedFromRecording(void) {
     gRecordReplayHasDivergedFromRecording();
 }
 
+bool SkRecordReplayAreEventsUnavailable(const char* why) {
+  return SkRecordReplayAreEventsDisallowed(why) ||
+    SkRecordReplayHasDivergedFromRecording();
+}
+
 uintptr_t SkRecordReplayValue(const char* why, uintptr_t v) {
   if (SkRecordReplayIsRecordingOrReplaying("values", why)) {
     return gRecordReplayValue(why, v);
