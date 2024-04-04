@@ -146,7 +146,7 @@ SkScalerContext_Mac::SkScalerContext_Mac(sk_sp<SkTypeface_Mac> typeface,
         // Short-circuit font creation because it requires a lot of
         // bindings that we do not yet support.
         // NOTE: All seconday arguments are currently ignored.
-        fCTFont = CTFontCreateCopyWithAttributes(ctFont, 0, nullptr, nullptr);
+        fCTFont.reset(CTFontCreateCopyWithAttributes(ctFont, 0, nullptr, nullptr));
         fCGFont.reset(CTFontCopyGraphicsFont(ctFont, nullptr));
         return;
     }
