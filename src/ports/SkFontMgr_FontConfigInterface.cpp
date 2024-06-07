@@ -169,8 +169,8 @@ class SkFontMgr_FCI : public SkFontMgr {
 public:
     SkFontMgr_FCI(sk_sp<SkFontConfigInterface> fci)
         : fFCI(std::move(fci))
-        , fCache(kMaxSize)
         , fMutex("SkFontMgr_FCI")
+        , fCache(kMaxSize)
     {}
 
 protected:
